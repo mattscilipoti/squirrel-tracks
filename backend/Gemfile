@@ -1,0 +1,29 @@
+source 'https://rubygems.org'
+
+ruby '3.3.0'
+
+gem 'rails', '~> 7.1.0'
+gem 'sqlite3', '~> 1.7'
+gem 'puma', '~> 6.4'
+
+# API & serialization
+gem 'active_model_serializers', '~> 0.10.14'
+gem 'rack-cors'
+
+# Development & test
+group :development, :test do
+  gem 'byebug', '~> 11.1', platforms: [:mri, :mingw, :x64_mingw]
+  gem 'rspec-rails', '~> 6.1'
+  gem 'factory_bot_rails', '~> 6.4'
+end
+
+group :development do
+  gem 'listen', '~> 3.8'
+end
+
+group :test do
+  gem 'shoulda-matchers', '~> 5.3'
+end
+
+# Optional: low-cost observability
+gem 'lograge', '~> 0.14'

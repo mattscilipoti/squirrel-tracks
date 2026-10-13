@@ -1,0 +1,320 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                                                                               ║
+║       ✅ VS CODE DEV CONTAINER FOR EMERGENT TASK TRACKER - READY!            ║
+║                                                                               ║
+║   Complete, isolated development environment with all deps pre-configured   ║
+║   Database: SQLite (zero config, embedded, perfect for dev)                 ║
+║                                                                               ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+
+🎯 WHAT YOU NOW HAVE
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ Dev Container Configuration
+   ├── .devcontainer/Dockerfile          (Ruby 3.3.0 + Node.js 20 + SQLite)
+   ├── .devcontainer/devcontainer.json   (VS Code auto-config)
+   ├── .devcontainer/post-create-command.sh (auto-setup script)
+   └── .devcontainer/DEVCONTAINER.md     (complete reference guide)
+
+✅ VS Code Configuration
+   ├── .vscode/settings.json             (workspace settings)
+   ├── .vscode/extensions.json           (recommended extensions)
+   ├── .vscode/launch.json               (debug configurations)
+   └── .vscode/tasks.json                (predefined tasks)
+
+✅ Database Changed
+   ├── backend/Gemfile                   (SQLite instead of PostgreSQL)
+   ├── backend/config/database.yml       (SQLite config template)
+   └── .env.template                     (updated for SQLite)
+
+✅ Docker Compose
+   └── docker-compose.yml                (alternative: docker compose up)
+
+✅ Documentation
+   ├── DEVCONTAINER-QUICKSTART.md        (Start here!)
+   ├── DEVCONTAINER-SUMMARY.txt          (This file)
+   └── .devcontainer/DEVCONTAINER.md     (Full reference)
+
+
+🚀 QUICK START (3 EASY STEPS)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Prerequisites (one-time):
+   ✓ Install VS Code (v1.86+)      → https://code.visualstudio.com
+   ✓ Install Docker Desktop         → https://www.docker.com/products/docker-desktop
+   ✓ Start Docker Desktop
+
+2. Open Project:
+   $ code /home/matt/develop/clients/GreatEnough/ett
+
+3. Reopen in Container:
+   • VS Code shows notification: "Folder contains a Dev Container configuration"
+   • Click "Reopen in Container"
+   • Wait 2-3 minutes (first time only)
+   • See: "✅ ETT Dev Environment Ready!"
+
+🎉 Done! All dependencies installed, databases created, ready to code.
+
+
+📊 WHAT'S INCLUDED IN CONTAINER
+═══════════════════════════════════════════════════════════════════════════════
+
+Languages:
+  • Ruby 3.3.0        (Rails backend)
+  • Node.js 20        (web frontend, optional)
+  • Git, Curl, Vim    (development tools)
+
+Databases:
+  • SQLite 3          (development + test, embedded)
+  • PostgreSQL client (optional, for future use)
+
+Dev Tools:
+  • Bundler           (Ruby package manager)
+  • Rails 7.1         (pre-installed, ready to use)
+  • RSpec             (testing framework)
+  • Prettier          (code formatter)
+  • Ruby LSP          (language server)
+
+Networking:
+  • Port 3000 auto-forwarded (Rails API)
+  • Port 5000 auto-forwarded (Web Frontend)
+  • SSH keys mounted (GitHub access)
+
+
+⚡ COMMON COMMANDS (Inside Container)
+═══════════════════════════════════════════════════════════════════════════════
+
+Terminal Commands:
+
+  # Rails Backend
+  cd backend
+  bundle exec rails server              # Start API (http://localhost:3000)
+  bundle exec rails console             # Interactive Ruby console
+  bundle exec rails db:create           # Create SQLite databases
+  bundle exec rails db:migrate          # Run migrations
+  bundle exec rspec                     # Run tests
+
+  # Web Frontend
+  cd web-frontend
+  python3 -m http.server 5000           # Start web (http://localhost:5000)
+
+  # iOS
+  cd ios-app
+  pod install                           # Install CocoaPods
+
+VS Code Tasks (Ctrl+Shift+P → "Tasks: Run Task"):
+
+  • Rails: Start Server                 (starts on port 3000)
+  • Rails: Database Create
+  • Rails: Run Tests (RSpec)
+  • Web: Start Dev Server               (starts on port 5000)
+  • iOS: Pod Install
+  • ETT: Full Setup                     (one-command setup)
+
+
+🔍 DEBUGGING IN VS CODE
+═══════════════════════════════════════════════════════════════════════════════
+
+Debug Rails Server:
+  1. Open backend/app/models/session.rb
+  2. Click line number to set breakpoint (red dot)
+  3. Press F5 (or Ctrl+Shift+D)
+  4. Select "Rails server"
+  5. Make HTTP request to trigger breakpoint
+  6. Step through code in debugger
+
+Debug Tests:
+  1. Open backend/spec/models/session_spec.rb
+  2. Set breakpoint
+  3. Press F5 → select "RSpec - current file"
+  4. Debugger pauses at breakpoint
+
+
+💾 DATA PERSISTENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+SQLite Databases:
+  • Location: backend/db/
+  • Files:   development.sqlite3, test.sqlite3
+  • Persists: Yes, even after stopping container
+  • Reset:   bundle exec rails db:reset
+
+Gem Dependencies:
+  • Location: /workspace/ett/bundle (Docker volume)
+  • Persists: Across container rebuilds
+
+SSH Keys:
+  • Mounted: /home/vscode/.ssh (read-only from host)
+  • Use for: GitHub authentication
+
+
+🌐 ACCESSING SERVICES
+═══════════════════════════════════════════════════════════════════════════════
+
+From Browser:
+  • Rails API:     http://localhost:3000
+  • Web Frontend:  http://localhost:5000
+  • Auto-forwarded by VS Code
+
+From Container Terminal:
+  • Same URLs as above (localhost works inside container)
+
+From VS Code Ports Panel:
+  • Ctrl+` to open terminal
+  • See "PORTS" tab at bottom
+  • Click "Open in Browser" for auto-opened tab
+
+
+🆚 CONTAINER vs. OLD SETUP
+═══════════════════════════════════════════════════════════════════════════════
+
+OLD (README-DEV.md - Manual):
+  • Install Ruby, PostgreSQL manually
+  • Risk of version conflicts
+  • Different on macOS vs Linux vs Windows
+  • Setup time: 30-60 min
+
+NEW (Dev Container - This):
+  • One click: "Reopen in Container"
+  • Identical environment everywhere
+  • Works on macOS, Linux, Windows
+  • Setup time: 2-3 min first time, instant after
+
+
+🔧 REBUILDING CONTAINER
+═══════════════════════════════════════════════════════════════════════════════
+
+When to rebuild:
+  • After editing .devcontainer/Dockerfile
+  • After major Gemfile changes
+  • If container is corrupted
+
+How to rebuild:
+  Ctrl+Shift+P → "Dev Containers: Rebuild Container"
+  (Takes 2-3 minutes)
+
+
+🚨 TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+"Docker daemon not running"
+  → Start Docker Desktop, wait 30 sec, retry
+
+"Permission denied" (Linux only)
+  → sudo usermod -aG docker $USER
+     (Then log out and back in)
+
+"Address already in use (port 3000)"
+  → kill $(lsof -t -i:3000)
+     OR use: bundle exec rails server -p 3001
+
+"Database is locked"
+  → cd backend
+     rm db/development.sqlite3
+     bundle exec rails db:create
+
+"Gem not found"
+  → cd backend
+     rm Gemfile.lock
+     bundle install
+
+Check full troubleshooting in: .devcontainer/DEVCONTAINER.md
+
+
+📁 FILE STRUCTURE
+═══════════════════════════════════════════════════════════════════════════════
+
+.devcontainer/
+├── Dockerfile                  ← Container image definition
+├── devcontainer.json           ← VS Code config (auto-setup)
+├── post-create-command.sh      ← Auto-runs after container starts
+└── DEVCONTAINER.md             ← Complete reference guide
+
+.vscode/
+├── settings.json               ← Format on save, tab size, etc.
+├── extensions.json             ← Recommended extensions
+├── launch.json                 ← Debug configurations
+└── tasks.json                  ← Predefined terminal tasks
+
+backend/
+├── Gemfile                     ← SQLite instead of PostgreSQL
+├── config/database.yml.template ← SQLite config
+└── ... (will be created by Rails)
+
+web-frontend/
+├── index.html
+├── css/
+└── js/
+
+.env.template                   ← Updated for SQLite config
+docker-compose.yml              ← Alternative: compose-based setup
+DEVCONTAINER-QUICKSTART.md     ← Start here!
+DEVCONTAINER-SUMMARY.txt        ← This file
+
+
+📚 DOCUMENTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Read in order:
+
+1. DEVCONTAINER-QUICKSTART.md   ← Start here (overview + quick commands)
+2. .devcontainer/DEVCONTAINER.md ← Full reference (debugging, troubleshooting)
+3. .vscode/settings.json         ← Workspace settings
+4. .vscode/tasks.json            ← Available tasks
+5. PROMPTS-PHASE-BY-PHASE.md    ← Implementation roadmap (copy prompts here)
+
+
+✅ KEY CHANGES FROM PREVIOUS SETUP
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Database: PostgreSQL → SQLite
+  • Why? Zero config, embedded, perfect for dev, no external service needed
+
+✓ Setup: Manual → Container
+  • Why? Reproducible, identical on all machines, one-click setup
+
+✓ Port Forwarding: Manual → Automatic
+  • Why? VS Code handles it; just works
+
+✓ Dependencies: System-wide → Containerized
+  • Why? Isolated from other projects, easy cleanup
+
+
+🎯 NEXT STEPS
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Close this file
+2. Open folder in VS Code:
+   code /home/matt/develop/clients/GreatEnough/ett
+
+3. Click notification: "Reopen in Container"
+   (or Ctrl+Shift+P → "Dev Containers: Reopen in Container")
+
+4. Wait 2-3 minutes for:
+   • Docker image to build
+   • Dependencies to install
+   • Databases to create
+   • Setup script to run
+
+5. See success message:
+   ✅ ETT Dev Environment Ready!
+
+6. Open terminal (Ctrl+`):
+   cd backend && bundle exec rails server
+
+7. Open http://localhost:3000 in browser
+
+8. Start coding! 🚀
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Questions? Read:
+  • DEVCONTAINER-QUICKSTART.md    (overview)
+  • .devcontainer/DEVCONTAINER.md (detailed reference)
+  • .vscode/settings.json         (workspace config)
+
+Ready? Open project in VS Code and click "Reopen in Container"! 🎉
+
+═══════════════════════════════════════════════════════════════════════════════

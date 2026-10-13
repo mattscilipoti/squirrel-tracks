@@ -1,0 +1,13 @@
+platform :ios, '14.0'
+
+target 'EmergenTaskTracker' do
+  # Local database
+  pod 'RealmSwift'
+  
+  # HTTP client (optional; can use URLSession instead)
+  # pod 'Alamofire'
+
+  target 'EmergenTaskTrackerTests' do
+    inherit! :search_paths
+  end
+end

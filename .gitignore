@@ -1,0 +1,24 @@
+
+# Dev Container
+.devcontainer/node_modules/
+.devcontainer/.env
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# IDE
+.vscode/launch.json
+.vscode/tasks.json
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.swp
+*.swo
+*~

@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    
+    container_name: ett-dev
+    
+    working_dir: /workspace/ett
+    
+    volumes:
+      - .:/workspace/ett
+      - bundle_cache:/workspace/ett/bundle
+      - ${HOME}/.ssh:/home/vscode/.ssh:ro
+    
+    ports:
+      - "3000:3000"  # Rails API
+      - "5000:5000"  # Web Frontend
+    
+    environment:
+      - RAILS_ENV=development
+      - BUNDLE_PATH=/workspace/ett/bundle
+    
+    command: /bin/bash
+    
+    stdin_open: true
+    tty: true
+    
+    networks:
+      - ett-network
+
+volumes:
+  bundle_cache:
+    driver: local
+
+networks:
+  ett-network:
+    driver: bridge

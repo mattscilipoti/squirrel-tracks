@@ -1,0 +1,85 @@
+{
+  "name": "Emergent Task Tracker Dev",
+  "description": "Development environment for ETT (Rails API + iOS + Web)",
+  
+  "image": "mcr.microsoft.com/devcontainers/ruby:3.3",
+  
+  "features": {
+    "ghcr.io/devcontainers/features/node:latest": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/git:latest": {}
+  },
+
+  "containerEnv": {
+    "RAILS_ENV": "development",
+    "BUNDLE_PATH": "/workspace/ett/bundle"
+  },
+
+  "remoteUser": "vscode",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[ruby]": {
+          "editor.defaultFormatter": "rubocop.ruby-lsp",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.fixAll": "explicit"
+          }
+        },
+        "[json]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[html]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[javascript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "files.exclude": {
+          "**/.DS_Store": true,
+          "**/node_modules": true,
+          "**/.git": true
+        },
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "ruby.lsp.nesting": true,
+        "ruby.lsp.rubyVersionManager": "rbenv"
+      },
+      
+      "extensions": [
+        "rubocop.ruby-lsp",
+        "esbenp.prettier-vscode",
+        "eamodio.gitlens",
+        "ms-vscode.makefile-tools",
+        "ms-vscode-remote.remote-containers",
+        "ms-vscode-remote.remote-ssh",
+        "sumneko.lua",
+        "GitHub.Copilot"
+      ]
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create-command.sh",
+
+  "postStartCommand": "cd /workspace/ett && bash -c 'echo && echo \"✅ ETT Dev Environment Ready!\" && echo && echo \"Navigate to components:\" && echo \"  cd backend    (Rails API)\" && echo \"  cd web-frontend (Web app)\" && echo \"  cd ios-app    (iOS project)\" && echo'",
+
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly"
+  ],
+
+  "forwardPorts": [3000, 5000],
+  
+  "portsAttributes": {
+    "3000": {
+      "label": "Rails API",
+      "onAutoForward": "notify"
+    },
+    "5000": {
+      "label": "Web Frontend",
+      "onAutoForward": "notify"
+    }
+  }
+}

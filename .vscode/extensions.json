@@ -1,0 +1,19 @@
+{
+  "recommendations": [
+    "rubocop.ruby-lsp",
+    "esbenp.prettier-vscode",
+    "eamodio.gitlens",
+    "ms-vscode.makefile-tools",
+    "ms-vscode-remote.remote-containers",
+    "ms-vscode-remote.remote-ssh",
+    "GitHub.Copilot",
+    "GitHub.copilot-chat",
+    "ms-vscode-remote.vscode-remote-extensionpack",
+    "redhat.vscode-xml",
+    "ms-vscode.extension-pack-for-java",
+    "dbaeumer.vscode-eslint",
+    "christian-kohler.path-intellisense",
+    "ms-vscode.makefile-tools",
+    "bradlc.vscode-tailwindcss"
+  ]
+}
