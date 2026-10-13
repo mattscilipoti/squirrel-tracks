@@ -35,6 +35,22 @@ header .subtitle {
     color: #666;
 }
 
+header .help-text {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 15px;
+    font-style: italic;
+}
+
+header .help-text a {
+    color: #007bff;
+    text-decoration: none;
+}
+
+header .help-text a:hover {
+    text-decoration: underline;
+}
+
 main {
     background: white;
     border-radius: 8px;
@@ -50,6 +66,16 @@ section h2 {
     font-size: 1.5rem;
     margin-bottom: 20px;
     color: #333;
+}
+
+.section-help {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: #f0f7ff;
+    border-left: 3px solid #007bff;
+    border-radius: 4px;
 }
 
 /* Timer Section */
@@ -126,6 +152,7 @@ section h2 {
 /* Task Input Section */
 .task-input-section {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     align-items: center;
 }
@@ -133,6 +160,11 @@ section h2 {
 .task-input-section label {
     font-weight: 600;
     min-width: 120px;
+}
+
+.task-input-section .section-help {
+    flex-basis: 100%;
+    margin-bottom: 0;
 }
 
 .input-field {
