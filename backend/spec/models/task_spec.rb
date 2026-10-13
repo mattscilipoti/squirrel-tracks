@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 RSpec.describe Task, type: :model do
@@ -8,7 +10,9 @@ RSpec.describe Task, type: :model do
   describe 'validations' do
     it { is_expected.to validate_presence_of(:name) }
     it { is_expected.to validate_presence_of(:session_id) }
-    it { is_expected.to validate_numericality_of(:duration_minutes).only_integer.is_greater_than_or_equal_to(0).allow_nil }
+    it {
+      is_expected.to validate_numericality_of(:duration_minutes).only_integer.is_greater_than_or_equal_to(0).allow_nil
+    }
   end
 
   describe '#create' do
@@ -38,7 +42,7 @@ RSpec.describe Task, type: :model do
       session = create(:session)
       task = build(:task, session: session, duration_minutes: -5)
       expect(task).not_to be_valid
-      expect(task.errors[:duration_minutes]).to include("must be greater than or equal to 0")
+      expect(task.errors[:duration_minutes]).to include('must be greater than or equal to 0')
     end
 
     it 'allows nil duration_minutes' do

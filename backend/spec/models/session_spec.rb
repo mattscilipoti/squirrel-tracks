@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'rails_helper'
 
 RSpec.describe Session, type: :model do
@@ -41,7 +43,7 @@ RSpec.describe Session, type: :model do
 
     it 'destroys associated tasks when session is deleted' do
       session = create(:session)
-      task = create(:task, session: session)
+      create(:task, session: session)
       session_id = session.id
 
       session.destroy
