@@ -9,11 +9,26 @@
 <body>
     <div class="container">
         <header>
-            <h1>Emergent Task Tracker</h1>
-            <p class="subtitle">Fill in your time by selecting which task for each 15-minute interval</p>
+            <div class="header-top">
+                <h1>The Emergent Task Timer</h1>
+                <p class="subtitle">Use an egg timer set to 15-minute intervals to keep track of what you seem to be doing. Each bubble represents 15 minutes. Only one bubble per column is filled; this chart shows where your time goes during the day.</p>
+            </div>
+            <div class="header-form">
+                <label>
+                    TASKS: <span class="form-value" id="tasksValue">0</span>
+                </label>
+                <label>
+                    START TIME: <input type="time" id="startTimeInput" class="form-input-small">
+                </label>
+                <label>
+                    MEMO: <input type="text" id="memoInput" placeholder="Notes..." class="form-input-small" style="max-width: 200px;">
+                </label>
+                <label>
+                    DATE: <input type="date" id="dateInput" class="form-input-small">
+                </label>
+            </div>
             <p class="help-text">
-                Inspired by <a href="https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/" target="_blank">David Seah's Emergent Task Timing</a>.
-                Fill in the first hour, then use Auto-fill to repeat the pattern for remaining hours.
+                Based on <a href="https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/" target="_blank">David Seah's Emergent Task Timing</a>
             </p>
         </header>
 
@@ -30,62 +45,110 @@
                 </div>
             </div>
 
-            <!-- Grid Controls -->
+            <!-- Grid Controls - Simplified -->
             <section class="grid-controls">
                 <div class="task-input-wrapper">
                     <input 
                         type="text" 
                         id="newTaskInput" 
-                        placeholder="Add new task..." 
+                        placeholder="Enter task name..." 
                         class="input-field-small"
                     >
-                    <button id="addTaskBtn" class="btn btn-primary btn-small">Add Task</button>
+                    <button id="addTaskBtn" class="btn btn-primary btn-small">Add</button>
                 </div>
+                <div class="spacer"></div>
+                <button id="autoFillBtn" class="btn btn-primary">Auto-fill Hour 1</button>
+                <button id="clearGridBtn" class="btn btn-tertiary">Clear Grid</button>
                 <button id="exportBtn" class="btn btn-secondary">Export CSV</button>
-                <button id="clearBtn" class="btn btn-tertiary">Clear All</button>
+                <button id="clearBtn" class="btn btn-danger">Reset All</button>
             </section>
 
             <!-- Time Grid -->
             <section class="grid-section">
-                <p class="grid-help">Fill in the first hour, then click "Auto-fill" to repeat the pattern for the rest of the day.</p>
                 <div class="grid-container">
                     <table class="time-grid" id="timeGrid">
                         <thead>
-                            <tr>
-                                <th class="task-column">Task</th>
-                                <th colspan="4" class="hour-group-header">Hour 1</th>
-                                <th colspan="4" class="hour-group-header">Hour 2</th>
-                                <th colspan="4" class="hour-group-header">Hour 3</th>
-                                <th colspan="4" class="hour-group-header">Hour 4</th>
-                                <th colspan="4" class="hour-group-header">Hour 5</th>
-                                <th colspan="4" class="hour-group-header">Hour 6</th>
-                                <th colspan="4" class="hour-group-header">Hour 7</th>
-                                <th colspan="4" class="hour-group-header">Hour 8</th>
-                                <th colspan="4" class="hour-group-header">Hour 9</th>
-                                <th colspan="4" class="hour-group-header">Hour 10</th>
-                                <th colspan="4" class="hour-group-header">Hour 11</th>
-                                <th colspan="4" class="hour-group-header">Hour 12</th>
-                                <th colspan="4" class="hour-group-header">Hour 13</th>
-                                <th colspan="4" class="hour-group-header">Hour 14</th>
-                                <th colspan="4" class="hour-group-header">Hour 15</th>
+                            <tr class="hour-header">
+                                <th class="task-column">TASK</th>
+                                <th colspan="4" class="hour-label" data-hour="1">9</th>
+                                <th colspan="4" class="hour-label" data-hour="2">10</th>
+                                <th colspan="4" class="hour-label" data-hour="3">11</th>
+                                <th colspan="4" class="hour-label" data-hour="4">12</th>
+                                <th colspan="4" class="hour-label" data-hour="5">1</th>
+                                <th colspan="4" class="hour-label" data-hour="6">2</th>
+                                <th colspan="4" class="hour-label" data-hour="7">3</th>
+                                <th colspan="4" class="hour-label" data-hour="8">4</th>
+                                <th colspan="4" class="hour-label" data-hour="9">5</th>
+                                <th colspan="4" class="hour-label" data-hour="10">6</th>
+                                <th colspan="4" class="hour-label" data-hour="11">7</th>
+                                <th colspan="4" class="hour-label" data-hour="12">8</th>
+                                <th colspan="4" class="hour-label" data-hour="13">9</th>
+                                <th colspan="4" class="hour-label" data-hour="14">10</th>
+                                <th colspan="4" class="hour-label" data-hour="15">11</th>
                             </tr>
-                            <tr>
+                            <tr class="interval-header">
                                 <th class="task-column"></th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
-                                <th class="interval-col">1</th><th class="interval-col">2</th><th class="interval-col">3</th><th class="interval-col">4</th>
+                                <th class="interval-number" data-interval="0">●</th>
+                                <th class="interval-number" data-interval="1">●</th>
+                                <th class="interval-number" data-interval="2">●</th>
+                                <th class="interval-number" data-interval="3">●</th>
+                                <!-- Repeated 14 more times for remaining hours -->
+                                <th class="interval-number" data-interval="4">●</th>
+                                <th class="interval-number" data-interval="5">●</th>
+                                <th class="interval-number" data-interval="6">●</th>
+                                <th class="interval-number" data-interval="7">●</th>
+                                <th class="interval-number" data-interval="8">●</th>
+                                <th class="interval-number" data-interval="9">●</th>
+                                <th class="interval-number" data-interval="10">●</th>
+                                <th class="interval-number" data-interval="11">●</th>
+                                <th class="interval-number" data-interval="12">●</th>
+                                <th class="interval-number" data-interval="13">●</th>
+                                <th class="interval-number" data-interval="14">●</th>
+                                <th class="interval-number" data-interval="15">●</th>
+                                <th class="interval-number" data-interval="16">●</th>
+                                <th class="interval-number" data-interval="17">●</th>
+                                <th class="interval-number" data-interval="18">●</th>
+                                <th class="interval-number" data-interval="19">●</th>
+                                <th class="interval-number" data-interval="20">●</th>
+                                <th class="interval-number" data-interval="21">●</th>
+                                <th class="interval-number" data-interval="22">●</th>
+                                <th class="interval-number" data-interval="23">●</th>
+                                <th class="interval-number" data-interval="24">●</th>
+                                <th class="interval-number" data-interval="25">●</th>
+                                <th class="interval-number" data-interval="26">●</th>
+                                <th class="interval-number" data-interval="27">●</th>
+                                <th class="interval-number" data-interval="28">●</th>
+                                <th class="interval-number" data-interval="29">●</th>
+                                <th class="interval-number" data-interval="30">●</th>
+                                <th class="interval-number" data-interval="31">●</th>
+                                <th class="interval-number" data-interval="32">●</th>
+                                <th class="interval-number" data-interval="33">●</th>
+                                <th class="interval-number" data-interval="34">●</th>
+                                <th class="interval-number" data-interval="35">●</th>
+                                <th class="interval-number" data-interval="36">●</th>
+                                <th class="interval-number" data-interval="37">●</th>
+                                <th class="interval-number" data-interval="38">●</th>
+                                <th class="interval-number" data-interval="39">●</th>
+                                <th class="interval-number" data-interval="40">●</th>
+                                <th class="interval-number" data-interval="41">●</th>
+                                <th class="interval-number" data-interval="42">●</th>
+                                <th class="interval-number" data-interval="43">●</th>
+                                <th class="interval-number" data-interval="44">●</th>
+                                <th class="interval-number" data-interval="45">●</th>
+                                <th class="interval-number" data-interval="46">●</th>
+                                <th class="interval-number" data-interval="47">●</th>
+                                <th class="interval-number" data-interval="48">●</th>
+                                <th class="interval-number" data-interval="49">●</th>
+                                <th class="interval-number" data-interval="50">●</th>
+                                <th class="interval-number" data-interval="51">●</th>
+                                <th class="interval-number" data-interval="52">●</th>
+                                <th class="interval-number" data-interval="53">●</th>
+                                <th class="interval-number" data-interval="54">●</th>
+                                <th class="interval-number" data-interval="55">●</th>
+                                <th class="interval-number" data-interval="56">●</th>
+                                <th class="interval-number" data-interval="57">●</th>
+                                <th class="interval-number" data-interval="58">●</th>
+                                <th class="interval-number" data-interval="59">●</th>
                             </tr>
                         </thead>
                         <tbody id="gridBody">
@@ -93,23 +156,25 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="grid-actions">
-                    <button id="autoFillBtn" class="btn btn-primary">Auto-fill Pattern from Hour 1</button>
-                    <button id="clearGridBtn" class="btn btn-tertiary">Clear Grid</button>
-                </div>
             </section>
 
-            <!-- Summary -->
-            <section class="summary-section">
-                <h2>Summary</h2>
-                <div id="summaryContent" class="summary-content">
-                    <!-- Generated by JS -->
+            <!-- Notes & Summary Section -->
+            <section class="notes-section">
+                <div class="notes-left">
+                    <h3>NOTES</h3>
+                    <textarea id="notesInput" class="notes-textarea" placeholder="Keep other notes here"></textarea>
+                </div>
+                <div class="notes-right">
+                    <h3>SUMMARY</h3>
+                    <div id="summaryContent" class="summary-content">
+                        <!-- Generated by JS -->
+                    </div>
                 </div>
             </section>
         </main>
 
         <footer>
-            <p>&copy; 2026 Emergent Task Tracker. <a href="https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/">About ETT</a></p>
+            <p>THE PRINTABLE CEO™ ETT02 | COPYRIGHT © 2006 DAVID SEAH • BETTER LIVING THROUGH NEW MEDIA • WWW.DAVIDSEAH.COM</p>
         </footer>
     </div>
 

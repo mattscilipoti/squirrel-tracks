@@ -1,12 +1,18 @@
 /**
- * GridTaskTracker - Radio button-based task time tracker
- * Implements a 15-hour × 60-interval grid with auto-fill pattern functionality
+ * GridTaskTracker - Circle/bubble-based task time tracker
+ * Implements a 15-hour × 60-interval grid matching the paper Emergent Task Timer
+ * Each circle represents whether a task was done during that 15-minute interval
  */
 class GridTaskTracker {
     constructor() {
         this.tasks = [];
-        this.gridData = []; // 2D array: tasks[taskIdx][intervalIdx] = value (null or taskName)
+        this.gridData = []; // 2D array: tasks[taskIdx][intervalIdx] = true/false (filled or not)
         this.sessionId = null;
+        this.startTime = '';
+        this.memo = '';
+        this.date = new Date().toISOString().split('T')[0];
+        this.notes = '';
+        
         this.timerState = {
             isRunning: false,
             timeRemaining: 15 * 60, // 15 minutes in seconds
@@ -18,13 +24,20 @@ class GridTaskTracker {
         this.loadFromLocalStorage();
         this.renderGrid();
         this.bindEvents();
+        this.updateTaskCount();
     }
 
     initializeUI() {
         // Timer buttons
-        document.getElementById('startBtn').addEventListener('click', () => this.timerStart());
-        document.getElementById('pauseBtn').addEventListener('click', () => this.timerPause());
-        document.getElementById('resetBtn').addEventListener('click', () => this.timerReset());
+        document.getElementById('startBtn')?.addEventListener('click', () => this.timerStart());
+        document.getElementById('pauseBtn')?.addEventListener('click', () => this.timerPause());
+        document.getElementById('resetBtn')?.addEventListener('click', () => this.timerReset());
+
+        // Header fields
+        document.getElementById('startTimeInput')?.addEventListener('change', () => this.saveToLocalStorage());
+        document.getElementById('memoInput')?.addEventListener('change', () => this.saveToLocalStorage());
+        document.getElementById('dateInput')?.addEventListener('change', () => this.saveToLocalStorage());
+        document.getElementById('notesInput')?.addEventListener('change', () => this.saveToLocalStorage());
 
         // Task input
         document.getElementById('addTaskBtn').addEventListener('click', () => this.addTaskFromInput());
@@ -32,21 +45,21 @@ class GridTaskTracker {
             if (e.key === 'Enter') this.addTaskFromInput();
         });
 
-        // Export/Clear
-        document.getElementById('exportBtn').addEventListener('click', () => this.exportCSV());
-        document.getElementById('clearBtn').addEventListener('click', () => this.clearAll());
-
         // Grid actions
         document.getElementById('autoFillBtn').addEventListener('click', () => this.autoFillHour1());
         document.getElementById('clearGridBtn').addEventListener('click', () => this.clearGrid());
+
+        // Export/Clear
+        document.getElementById('exportBtn').addEventListener('click', () => this.exportCSV());
+        document.getElementById('clearBtn').addEventListener('click', () => this.clearAll());
     }
 
     bindEvents() {
-        // Radio button change handlers are attached in renderGrid()
+        // Bubble click handlers are attached in renderGrid()
     }
 
     /**
-     * Add a new task to the tracker
+     * Add a new task from input field
      */
     addTaskFromInput() {
         const input = document.getElementById('newTaskInput');
@@ -67,9 +80,11 @@ class GridTaskTracker {
      */
     addTask(taskName) {
         this.tasks.push(taskName);
-        this.gridData.push(new Array(60).fill(null)); // 60 intervals
+        this.gridData.push(new Array(60).fill(false)); // 60 intervals, all empty
         this.renderGrid();
         this.updateSummary();
+        this.updateTaskCount();
+        this.saveToLocalStorage();
     }
 
     /**
@@ -80,11 +95,22 @@ class GridTaskTracker {
         this.gridData.splice(taskIdx, 1);
         this.renderGrid();
         this.updateSummary();
+        this.updateTaskCount();
+        this.saveToLocalStorage();
     }
 
     /**
-     * Render the entire grid with radio buttons
-     * Structure: One row per task, one column per 15-minute interval
+     * Update task count in header
+     */
+    updateTaskCount() {
+        const countEl = document.getElementById('tasksValue');
+        if (countEl) {
+            countEl.textContent = this.tasks.length;
+        }
+    }
+
+    /**
+     * Render the entire grid with circles
      */
     renderGrid() {
         const tbody = document.getElementById('gridBody');
@@ -93,45 +119,64 @@ class GridTaskTracker {
         this.tasks.forEach((taskName, taskIdx) => {
             const row = document.createElement('tr');
 
-            // Task name cell with remove button
+            // Task name cell with checkboxes and remove button
             const taskCell = document.createElement('td');
             taskCell.className = 'task-name-cell';
-            taskCell.innerHTML = `${taskName} <span class="task-remove" title="Remove task">×</span>`;
-            taskCell.querySelector('.task-remove').addEventListener('click', () => {
-                this.removeTask(taskIdx);
-            });
+            
+            // 3 checkboxes for task status
+            const checkboxes = document.createElement('span');
+            checkboxes.className = 'task-checkboxes';
+            for (let i = 0; i < 3; i++) {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'task-checkbox';
+                checkbox.title = `Status ${i + 1}`;
+                checkboxes.appendChild(checkbox);
+            }
+            
+            taskCell.appendChild(checkboxes);
+            taskCell.appendChild(document.createTextNode(taskName));
+            
+            // Remove button
+            const removeBtn = document.createElement('span');
+            removeBtn.className = 'task-remove';
+            removeBtn.textContent = '×';
+            removeBtn.title = 'Remove task';
+            removeBtn.addEventListener('click', () => this.removeTask(taskIdx));
+            taskCell.appendChild(removeBtn);
+            
             row.appendChild(taskCell);
 
-            // 60 interval cells with radio buttons
+            // 60 interval cells with circles
             for (let intervalIdx = 0; intervalIdx < 60; intervalIdx++) {
                 const hourIdx = Math.floor(intervalIdx / 4);
-                const isOddHour = hourIdx % 2 === 0; // 0-3 is hour 1 (index 0, even=odd-looking)
-
+                
                 const cell = document.createElement('td');
-                cell.className = isOddHour ? 'hour-even' : 'hour-odd';
                 cell.dataset.taskIdx = taskIdx;
                 cell.dataset.intervalIdx = intervalIdx;
 
-                // Radio button
-                const radioId = `task-${taskIdx}-interval-${intervalIdx}`;
-                const radio = document.createElement('input');
-                radio.type = 'radio';
-                radio.id = radioId;
-                radio.name = `interval-${intervalIdx}`; // Same name for all tasks in same interval
-                radio.value = taskIdx;
-
-                // Check if this task is assigned to this interval
-                if (this.gridData[taskIdx][intervalIdx] !== null) {
-                    radio.checked = true;
+                // Create circle/bubble
+                const bubble = document.createElement('div');
+                bubble.className = 'interval-bubble';
+                
+                // Set filled state
+                if (this.gridData[taskIdx][intervalIdx]) {
+                    bubble.classList.add('filled');
                 }
 
-                radio.addEventListener('change', (e) => {
-                    if (e.target.checked) {
-                        this.assignInterval(intervalIdx, taskIdx);
-                    }
+                bubble.addEventListener('click', () => {
+                    this.toggleInterval(intervalIdx, taskIdx);
                 });
 
-                cell.appendChild(radio);
+                bubble.addEventListener('dblclick', (e) => {
+                    e.stopPropagation();
+                    // Double click to clear
+                    this.gridData[taskIdx][intervalIdx] = false;
+                    this.renderGrid();
+                    this.updateSummary();
+                });
+
+                cell.appendChild(bubble);
                 row.appendChild(cell);
             }
 
@@ -142,46 +187,41 @@ class GridTaskTracker {
     }
 
     /**
-     * Assign an interval to a task (only one task per interval allowed)
+     * Toggle interval for a task (can have multiple tasks per interval)
      */
-    assignInterval(intervalIdx, taskIdx) {
-        // Clear this interval from all other tasks
-        for (let t = 0; t < this.tasks.length; t++) {
-            this.gridData[t][intervalIdx] = null;
-        }
-
-        // Assign to this task
-        this.gridData[taskIdx][intervalIdx] = this.tasks[taskIdx];
-
+    toggleInterval(intervalIdx, taskIdx) {
+        this.gridData[taskIdx][intervalIdx] = !this.gridData[taskIdx][intervalIdx];
+        this.renderGrid();
         this.updateSummary();
-        this.saveToLocalStorage();
     }
 
     /**
-     * Auto-fill: Copy Hour 1 (intervals 0-3) pattern to all other hours (2-15)
+     * Auto-fill: Copy Hour 1 (intervals 0-3) pattern to all other hours
      */
     autoFillHour1() {
-        const hour1Pattern = this.gridData.map(row => [row[0], row[1], row[2], row[3]]);
+        const hour1Pattern = [
+            this.gridData.map(row => row[0]),
+            this.gridData.map(row => row[1]),
+            this.gridData.map(row => row[2]),
+            this.gridData.map(row => row[3])
+        ];
 
-        if (hour1Pattern.every(pattern => pattern.every(cell => cell === null))) {
-            alert('Hour 1 is empty. Fill in at least one interval in Hour 1 first.');
+        // Check if Hour 1 has any data
+        const hasData = hour1Pattern.some(interval => interval.some(v => v));
+        
+        if (!hasData) {
+            alert('Hour 1 is empty. Fill in at least one task interval in Hour 1 first.');
             return;
         }
 
         // Apply pattern to remaining 14 hours
         for (let hour = 1; hour < 15; hour++) {
-            const startInterval = hour * 4;
-            for (let i = 0; i < 4; i++) {
-                const intervalIdx = startInterval + i;
-                const taskIdx = this.gridData.findIndex(row => row[i] !== null);
-
-                if (taskIdx !== -1) {
-                    // Clear this interval from all tasks
-                    for (let t = 0; t < this.tasks.length; t++) {
-                        this.gridData[t][intervalIdx] = null;
-                    }
-                    // Assign to the same task that has it in Hour 1
-                    this.gridData[taskIdx][intervalIdx] = this.tasks[taskIdx];
+            for (let intervalInHour = 0; intervalInHour < 4; intervalInHour++) {
+                const sourceIntervalIdx = intervalInHour;
+                const targetIntervalIdx = hour * 4 + intervalInHour;
+                
+                for (let taskIdx = 0; taskIdx < this.tasks.length; taskIdx++) {
+                    this.gridData[taskIdx][targetIntervalIdx] = this.gridData[taskIdx][sourceIntervalIdx];
                 }
             }
         }
@@ -197,7 +237,7 @@ class GridTaskTracker {
     clearGrid() {
         if (!confirm('Clear all interval assignments? (Tasks will remain)')) return;
 
-        this.gridData = this.tasks.map(() => new Array(60).fill(null));
+        this.gridData = this.tasks.map(() => new Array(60).fill(false));
         this.renderGrid();
         this.updateSummary();
     }
@@ -212,7 +252,7 @@ class GridTaskTracker {
         let hasData = false;
 
         this.tasks.forEach((taskName, taskIdx) => {
-            const intervalCount = this.gridData[taskIdx].filter(cell => cell !== null).length;
+            const intervalCount = this.gridData[taskIdx].filter(v => v).length;
 
             if (intervalCount > 0) {
                 hasData = true;
@@ -229,18 +269,23 @@ class GridTaskTracker {
 
                 const item = document.createElement('div');
                 item.className = 'summary-item';
-                item.innerHTML = `
-                    <div class="task-title">${taskName}</div>
-                    <div class="task-stats">
-                        <strong>${intervalCount}</strong> intervals = <strong>${timeStr}</strong>
-                    </div>
-                `;
+                
+                const titleEl = document.createElement('div');
+                titleEl.className = 'task-title';
+                titleEl.textContent = taskName;
+                item.appendChild(titleEl);
+                
+                const statsEl = document.createElement('div');
+                statsEl.className = 'task-stats';
+                statsEl.innerHTML = `<strong>${intervalCount}</strong> intervals = <strong>${timeStr}</strong>`;
+                item.appendChild(statsEl);
+                
                 summaryContent.appendChild(item);
             }
         });
 
         if (!hasData) {
-            summaryContent.innerHTML = '<div class="summary-item empty">No tasks assigned yet. Fill in the grid to see summary.</div>';
+            summaryContent.innerHTML = '<div class="summary-item empty">No time tracked yet</div>';
         }
     }
 
@@ -248,10 +293,13 @@ class GridTaskTracker {
      * Export grid as CSV
      */
     exportCSV() {
-        let csv = 'Task,Intervals,Minutes,Time\n';
+        const date = document.getElementById('dateInput')?.value || this.date;
+        const startTime = document.getElementById('startTimeInput')?.value || this.startTime;
+        
+        let csv = 'TASK,INTERVALS,MINUTES,TIME\n';
 
         this.tasks.forEach((taskName, taskIdx) => {
-            const intervalCount = this.gridData[taskIdx].filter(cell => cell !== null).length;
+            const intervalCount = this.gridData[taskIdx].filter(v => v).length;
             const minutes = intervalCount * 15;
             const hours = Math.floor(minutes / 60);
             const mins = minutes % 60;
@@ -268,12 +316,14 @@ class GridTaskTracker {
             csv += `"${taskName}",${intervalCount},${minutes},"${timeStr}"\n`;
         });
 
-        // Add timestamp
-        const now = new Date();
-        const timestamp = now.toISOString().slice(0, 10);
-        const filename = `ett-tracker-${timestamp}.csv`;
+        // Add metadata
+        csv += `\n\nMETADATA\n`;
+        csv += `Date,${date}\n`;
+        csv += `Start Time,${startTime}\n`;
+        csv += `Memo,"${document.getElementById('memoInput')?.value || ''}"\n`;
 
         // Download
+        const filename = `ETT-${date}.csv`;
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -295,6 +345,7 @@ class GridTaskTracker {
         this.gridData = [];
         this.renderGrid();
         this.updateSummary();
+        this.updateTaskCount();
     }
 
     /**
@@ -330,7 +381,9 @@ class GridTaskTracker {
      * Timer: Pause
      */
     timerPause() {
-        clearInterval(this.timerState.intervalHandle);
+        if (this.timerState.intervalHandle) {
+            clearInterval(this.timerState.intervalHandle);
+        }
         this.timerState.isRunning = false;
         document.getElementById('startBtn').disabled = false;
         document.getElementById('pauseBtn').disabled = true;
@@ -340,7 +393,9 @@ class GridTaskTracker {
      * Timer: Reset
      */
     timerReset() {
-        clearInterval(this.timerState.intervalHandle);
+        if (this.timerState.intervalHandle) {
+            clearInterval(this.timerState.intervalHandle);
+        }
         this.timerState.isRunning = false;
         this.timerState.timeRemaining = this.timerState.totalTime;
         this.timerState.currentInterval = 0;
@@ -355,18 +410,31 @@ class GridTaskTracker {
     updateTimerDisplay() {
         const mins = Math.floor(this.timerState.timeRemaining / 60);
         const secs = this.timerState.timeRemaining % 60;
-        document.getElementById('timerDisplay').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+        const display = document.getElementById('timerDisplay');
+        if (display) {
+            display.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
     }
 
     /**
      * Save state to localStorage
      */
     saveToLocalStorage() {
+        // Save form inputs
+        this.startTime = document.getElementById('startTimeInput')?.value || '';
+        this.memo = document.getElementById('memoInput')?.value || '';
+        this.date = document.getElementById('dateInput')?.value || this.date;
+        this.notes = document.getElementById('notesInput')?.value || '';
+
         const state = {
             tasks: this.tasks,
             gridData: this.gridData,
             sessionId: this.sessionId,
-            timerState: this.timerState
+            timerState: this.timerState,
+            startTime: this.startTime,
+            memo: this.memo,
+            date: this.date,
+            notes: this.notes
         };
         localStorage.setItem('ettGridState', JSON.stringify(state));
     }
@@ -382,10 +450,26 @@ class GridTaskTracker {
                 this.tasks = state.tasks || [];
                 this.gridData = state.gridData || [];
                 this.sessionId = state.sessionId;
+                this.startTime = state.startTime || '';
+                this.memo = state.memo || '';
+                this.date = state.date || new Date().toISOString().split('T')[0];
+                this.notes = state.notes || '';
+                
+                // Restore form fields
+                const startTimeInput = document.getElementById('startTimeInput');
+                const memoInput = document.getElementById('memoInput');
+                const dateInput = document.getElementById('dateInput');
+                const notesInput = document.getElementById('notesInput');
+                
+                if (startTimeInput) startTimeInput.value = this.startTime;
+                if (memoInput) memoInput.value = this.memo;
+                if (dateInput) dateInput.value = this.date;
+                if (notesInput) notesInput.value = this.notes;
+                
                 // Initialize grid data for tasks if not present
                 if (this.gridData.length < this.tasks.length) {
                     for (let i = this.gridData.length; i < this.tasks.length; i++) {
-                        this.gridData.push(new Array(60).fill(null));
+                        this.gridData.push(new Array(60).fill(false));
                     }
                 }
             } catch (e) {
