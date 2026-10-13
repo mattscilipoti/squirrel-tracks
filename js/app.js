@@ -12,9 +12,33 @@ class EmergenTaskTracker {
         this.timeRemaining = 15 * 60; // 15 minutes in seconds
         this.intervalCount = 0;
         this.tasks = []; // Array of { name, duration_minutes, completedAt }
+        this.isInitializing = false;
 
         this.initializeUI();
         this.loadFromLocalStorage();
+        this.initializeSession();
+    }
+
+    async initializeSession() {
+        // Create a new session if one doesn't exist
+        if (!this.sessionId) {
+            try {
+                this.isInitializing = true;
+                const sessionData = {
+                    status: 'active',
+                };
+                const response = await this.api.createSession(sessionData);
+                this.sessionId = response.id;
+                this.updateConnectionStatus(true);
+                console.log('Session created:', this.sessionId);
+                this.saveToLocalStorage();
+            } catch (error) {
+                console.error('Failed to create session:', error);
+                this.updateConnectionStatus(false);
+            } finally {
+                this.isInitializing = false;
+            }
+        }
     }
 
     initializeUI() {
@@ -49,6 +73,18 @@ class EmergenTaskTracker {
 
         this.updateTimerDisplay();
         this.updateSummary();
+    }
+
+    updateConnectionStatus(connected) {
+        const statusClass = connected ? 'connected' : 'disconnected';
+        const statusText = connected ? 'Connected to backend' : 'Offline mode';
+
+        // Update button visibility/state
+        if (!connected) {
+            // Disable certain features in offline mode if needed
+        }
+
+        console.log(`API Status: ${statusText}`);
     }
 
     startTimer() {
@@ -96,9 +132,9 @@ class EmergenTaskTracker {
             bubble.classList.add('completed');
         }
 
-        // Log to API if connected
-        if (this.sessionId && this.currentTaskName) {
-            this.syncInterval();
+        // Update backend task with new duration
+        if (this.sessionId && this.tasks.length > 0) {
+            this.updateTaskDuration();
         }
 
         this.updateSummary();
@@ -129,15 +165,18 @@ class EmergenTaskTracker {
             name: taskName,
             duration_minutes: 0,
             started_at: new Date().toISOString(),
+            id: null, // Will be populated after API sync
         });
 
         this.elements.taskInput.value = '';
         this.updateSummary();
         this.saveToLocalStorage();
 
-        // Sync to API if connected
-        if (this.sessionId) {
+        // Sync to API if connected (session ready)
+        if (this.sessionId && !this.isInitializing) {
             this.syncTask(taskName);
+        } else if (!this.sessionId) {
+            console.warn('Session not ready yet, task will sync when backend connects');
         }
     }
 
@@ -171,25 +210,38 @@ class EmergenTaskTracker {
         try {
             const taskData = {
                 name: taskName,
-                started_at: new Date().toISOString(),
+                duration_minutes: 0,
             };
             const result = await this.api.createTask(this.sessionId, taskData);
+            // Store the task ID for later updates
+            const currentTask = this.tasks[this.tasks.length - 1];
+            if (currentTask && result.id) {
+                currentTask.id = result.id;
+            }
             console.log('Task synced:', result);
         } catch (error) {
             console.error('Failed to sync task:', error);
         }
     }
 
-    async syncInterval() {
+    async updateTaskDuration() {
+        if (!this.tasks.length || !this.sessionId) return;
+
         try {
-            const intervalData = {
-                interval_number: this.intervalCount,
-                completed_at: new Date().toISOString(),
-            };
-            const result = await this.api.logInterval(this.sessionId, intervalData);
-            console.log('Interval synced:', result);
+            const currentTask = this.tasks[this.tasks.length - 1];
+            if (!currentTask.id) {
+                console.log('Task not yet synced to backend, skipping duration update');
+                return;
+            }
+
+            // Update duration: each interval is 15 minutes
+            const duration = this.intervalCount * 15;
+            const taskData = { duration_minutes: duration };
+
+            const result = await this.api.updateTask(this.sessionId, currentTask.id, taskData);
+            console.log('Task duration updated:', result);
         } catch (error) {
-            console.error('Failed to sync interval:', error);
+            console.error('Failed to update task duration:', error);
         }
     }
 
@@ -228,7 +280,7 @@ class EmergenTaskTracker {
             currentTaskName: this.currentTaskName,
             timeRemaining: this.timeRemaining,
             intervalCount: this.intervalCount,
-            tasks: this.tasks,
+            tasks: this.tasks, // Now includes task IDs
             bubbles: Array.from(document.querySelectorAll('.bubble.completed')).map(b => parseInt(b.dataset.interval)),
         };
         localStorage.setItem('ettState', JSON.stringify(state));
@@ -255,6 +307,23 @@ class EmergenTaskTracker {
 
         this.updateTimerDisplay();
         this.updateSummary();
+
+        // If we have a sessionId, validate it still exists in backend
+        if (this.sessionId) {
+            this.validateSession();
+        }
+    }
+
+    async validateSession() {
+        try {
+            const session = await this.api.getSession(this.sessionId);
+            console.log('Session validated:', session.id);
+            this.updateConnectionStatus(true);
+        } catch (error) {
+            console.log('Session no longer valid, will create new one');
+            this.sessionId = null;
+            this.saveToLocalStorage();
+        }
     }
 }
 
