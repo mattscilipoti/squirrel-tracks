@@ -23,7 +23,7 @@ RSpec.describe Session, type: :model do
     it 'allows both active and completed statuses' do
       active_session = create(:session, status: :active)
       completed_session = create(:session, status: :completed)
-      
+
       expect(active_session.status).to eq('active')
       expect(completed_session.status).to eq('completed')
     end
@@ -34,7 +34,7 @@ RSpec.describe Session, type: :model do
       session = create(:session)
       task1 = create(:task, session: session)
       task2 = create(:task, session: session)
-      
+
       expect(session.tasks.count).to eq(2)
       expect(session.tasks).to include(task1, task2)
     end
@@ -43,9 +43,9 @@ RSpec.describe Session, type: :model do
       session = create(:session)
       task = create(:task, session: session)
       session_id = session.id
-      
+
       session.destroy
-      
+
       expect(Task.where(session_id: session_id)).to be_empty
     end
   end

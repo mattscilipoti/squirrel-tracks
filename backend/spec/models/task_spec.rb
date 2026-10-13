@@ -29,7 +29,7 @@ RSpec.describe Task, type: :model do
       session = create(:session)
       task1 = build(:task, session: session, duration_minutes: 0)
       task2 = build(:task, session: session, duration_minutes: 15)
-      
+
       expect(task1).to be_valid
       expect(task2).to be_valid
     end
@@ -50,7 +50,7 @@ RSpec.describe Task, type: :model do
     it 'creates a valid task with all required fields' do
       session = create(:session)
       task = create(:task, session: session, name: 'Document API', duration_minutes: 25)
-      
+
       expect(task).to be_persisted
       expect(task.name).to eq('Document API')
       expect(task.duration_minutes).to eq(25)
