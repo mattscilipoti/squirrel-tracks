@@ -1,17 +1,23 @@
 /**
  * GridTaskTracker - Circle/bubble-based task time tracker
  * Implements a 15-hour × 60-interval grid matching the paper Emergent Task Timer
- * Each circle represents whether a task was done during that 15-minute interval
+ * Uses Supabase for backend data storage and sync
  */
 class GridTaskTracker {
   constructor() {
     this.tasks = [];
+    this.taskIdMap = {}; // Map task name to Supabase ID
     this.gridData = []; // 2D array: tasks[taskIdx][intervalIdx] = true/false (filled or not)
     this.sessionId = null;
     this.startTime = "";
     this.memo = "";
     this.date = new Date().toISOString().split("T")[0];
     this.notes = "";
+
+    // Supabase client
+    this.db = getSupabaseClient();
+    this.lastSyncTime = null;
+    this.isSyncing = false;
 
     this.timerState = {
       isRunning: false,
@@ -22,13 +28,91 @@ class GridTaskTracker {
 
     this.initializeUI();
     this.loadFromLocalStorage();
+    this.initializeSession(); // Create/load session from Supabase
     this.renderGrid();
     this.bindEvents();
     this.updateTaskCount();
     this.updateTimeCalculations();
-    
+
     // Update time calculations every minute
     setInterval(() => this.updateTimeCalculations(), 60000);
+
+    // Auto-sync to Supabase every 30 seconds
+    setInterval(() => this.syncToSupabase(), 30000);
+  }
+
+  /**
+   * Initialize or load session from Supabase
+   */
+  async initializeSession() {
+    // Check if we have a saved session ID
+    if (this.sessionId) {
+      try {
+        const session = await this.db.getSession(this.sessionId);
+        if (session) {
+          console.log("Session loaded from Supabase:", this.sessionId);
+          this.restoreSessionData(session);
+          return;
+        }
+      } catch (error) {
+        console.warn("Failed to load session, creating new one:", error);
+      }
+    }
+
+    // Create new session
+    try {
+      const sessionData = {
+        status: "active",
+        start_time: this.startTime || null,
+        memo: this.memo || null,
+        date: this.date,
+        notes: this.notes || null,
+      };
+
+      const result = await this.db.createSession(sessionData);
+      this.sessionId = result?.[0]?.id || result?.id;
+      console.log("New session created:", this.sessionId);
+      this.saveToLocalStorage();
+    } catch (error) {
+      console.error("Failed to create session:", error);
+      alert(
+        "Failed to create session. Check Supabase credentials and internet connection."
+      );
+    }
+  }
+
+  /**
+   * Restore session data from Supabase
+   */
+  restoreSessionData(session) {
+    this.sessionId = session.id;
+    this.startTime = session.start_time || "";
+    this.memo = session.memo || "";
+    this.date = session.date || this.date;
+    this.notes = session.notes || "";
+
+    // Update form fields
+    const startTimeInput = document.getElementById("startTimeInput");
+    const memoInput = document.getElementById("memoInput");
+    const dateInput = document.getElementById("dateInput");
+    const notesInput = document.getElementById("notesInput");
+
+    if (startTimeInput) startTimeInput.value = this.startTime;
+    if (memoInput) memoInput.value = this.memo;
+    if (dateInput) dateInput.value = this.date;
+    if (notesInput) notesInput.value = this.notes;
+
+    // Load tasks
+    if (session.tasks && session.tasks.length > 0) {
+      this.tasks = session.tasks.map((t) => t.name);
+      this.taskIdMap = {};
+      session.tasks.forEach((t) => {
+        this.taskIdMap[t.name] = t.id;
+      });
+
+      // Initialize gridData
+      this.gridData = this.tasks.map(() => new Array(60).fill(false));
+    }
   }
 
   initializeUI() {
@@ -118,18 +202,62 @@ class GridTaskTracker {
     this.updateSummary();
     this.updateTaskCount();
     this.saveToLocalStorage();
+
+    // Sync to Supabase asynchronously
+    if (this.sessionId) {
+      this.createTaskInSupabase(taskName);
+    }
+  }
+
+  /**
+   * Create task in Supabase
+   */
+  async createTaskInSupabase(taskName) {
+    try {
+      const result = await this.db.createTask(this.sessionId, {
+        name: taskName,
+        duration_minutes: 0,
+      });
+      const taskId = result?.[0]?.id || result?.id;
+      this.taskIdMap[taskName] = taskId;
+      console.log("Task synced to Supabase:", taskName, taskId);
+    } catch (error) {
+      console.error("Failed to sync task to Supabase:", error);
+    }
   }
 
   /**
    * Remove task by index
    */
   removeTask(taskIdx) {
+    const taskName = this.tasks[taskIdx];
+    const taskId = this.taskIdMap[taskName];
+
     this.tasks.splice(taskIdx, 1);
     this.gridData.splice(taskIdx, 1);
+    delete this.taskIdMap[taskName];
+
     this.renderGrid();
     this.updateSummary();
     this.updateTaskCount();
     this.saveToLocalStorage();
+
+    // Delete from Supabase asynchronously
+    if (this.sessionId && taskId) {
+      this.deleteTaskFromSupabase(taskId);
+    }
+  }
+
+  /**
+   * Delete task from Supabase
+   */
+  async deleteTaskFromSupabase(taskId) {
+    try {
+      await this.db.deleteTask(this.sessionId, taskId);
+      console.log("Task deleted from Supabase:", taskId);
+    } catch (error) {
+      console.error("Failed to delete task from Supabase:", error);
+    }
   }
 
   /**
@@ -159,7 +287,9 @@ class GridTaskTracker {
 
     // Parse start time
     const [startHour, startMin] = startTimeInput.split(":").map(Number);
-    const startDate = new Date(dateInput || new Date().toISOString().split("T")[0]);
+    const startDate = new Date(
+      dateInput || new Date().toISOString().split("T")[0],
+    );
     startDate.setHours(startHour, startMin, 0, 0);
 
     // Calculate end time (start + 15 hours)
@@ -169,7 +299,8 @@ class GridTaskTracker {
     // Display end time
     const endHour = String(endDate.getHours()).padStart(2, "0");
     const endMin = String(endDate.getMinutes()).padStart(2, "0");
-    document.getElementById("endTimeDisplay").textContent = `${endHour}:${endMin}`;
+    document.getElementById("endTimeDisplay").textContent =
+      `${endHour}:${endMin}`;
 
     // Calculate elapsed time since start
     const now = new Date();
@@ -177,17 +308,13 @@ class GridTaskTracker {
     const elapsedMinutes = Math.floor(elapsed / (1000 * 60));
     const elapsedHours = Math.floor(elapsedMinutes / 60);
     const elapsedMins = elapsedMinutes % 60;
-    document.getElementById(
-      "elapsedDisplay"
-    ).textContent = `${elapsedHours}h ${elapsedMins}m`;
+    document.getElementById("elapsedDisplay").textContent =
+      `${elapsedHours}h ${elapsedMins}m`;
 
     // Calculate current interval (0-59)
     // Each interval is 15 minutes
     const intervalsElapsed = Math.floor(elapsedMinutes / 15);
-    const currentInterval = Math.min(
-      intervalsElapsed,
-      59
-    ); // Cap at 59 (60 intervals total, 0-59)
+    const currentInterval = Math.min(intervalsElapsed, 59); // Cap at 59 (60 intervals total, 0-59)
 
     if (elapsedMinutes < 0) {
       // Start time is in the future
@@ -195,13 +322,15 @@ class GridTaskTracker {
         "Not started";
     } else if (intervalsElapsed >= 60) {
       // Tracking complete or exceeded
-      document.getElementById("currentIntervalDisplay").textContent = "Complete";
+      document.getElementById("currentIntervalDisplay").textContent =
+        "Complete";
     } else {
       // Show current interval (1-indexed for display)
       const intervalNum = currentInterval + 1;
       const intervalHour = Math.floor(currentInterval / 4) + 1;
       const intervalInHour = (currentInterval % 4) + 1;
-      document.getElementById("currentIntervalDisplay").textContent = `${intervalNum} (Hour ${intervalHour}.${intervalInHour})`;
+      document.getElementById("currentIntervalDisplay").textContent =
+        `${intervalNum} (Hour ${intervalHour}.${intervalInHour})`;
     }
   }
 
@@ -289,6 +418,44 @@ class GridTaskTracker {
     this.gridData[taskIdx][intervalIdx] = !this.gridData[taskIdx][intervalIdx];
     this.renderGrid();
     this.updateSummary();
+    this.saveToLocalStorage();
+
+    // Sync to Supabase asynchronously
+    if (this.sessionId) {
+      this.syncIntervalToSupabase(
+        intervalIdx,
+        taskIdx,
+        this.gridData[taskIdx][intervalIdx]
+      );
+    }
+  }
+
+  /**
+   * Sync interval toggle to Supabase
+   */
+  async syncIntervalToSupabase(intervalIdx, taskIdx, isFilled) {
+    const taskName = this.tasks[taskIdx];
+    const taskId = this.taskIdMap[taskName];
+
+    if (!taskId) {
+      console.warn("Task ID not found, skipping interval sync");
+      return;
+    }
+
+    try {
+      if (isFilled) {
+        // Create interval entry
+        await this.db.createInterval(this.sessionId, taskId, intervalIdx);
+      } else {
+        // Delete interval entry
+        await this.db.deleteInterval(this.sessionId, taskId, intervalIdx);
+      }
+      console.log(
+        `Interval ${intervalIdx} for task ${taskName} synced (filled=${isFilled})`
+      );
+    } catch (error) {
+      console.error("Failed to sync interval to Supabase:", error);
+    }
   }
 
   /**
@@ -542,6 +709,38 @@ class GridTaskTracker {
   }
 
   /**
+   * Sync session metadata to Supabase
+   */
+  async syncToSupabase() {
+    if (this.isSyncing || !this.sessionId) return;
+
+    this.isSyncing = true;
+
+    try {
+      // Save latest form values
+      this.startTime = document.getElementById("startTimeInput")?.value || "";
+      this.memo = document.getElementById("memoInput")?.value || "";
+      this.date = document.getElementById("dateInput")?.value || this.date;
+      this.notes = document.getElementById("notesInput")?.value || "";
+
+      const sessionData = {
+        start_time: this.startTime || null,
+        memo: this.memo || null,
+        date: this.date,
+        notes: this.notes || null,
+      };
+
+      await this.db.updateSession(this.sessionId, sessionData);
+      this.lastSyncTime = new Date().toISOString();
+      console.log("Session synced to Supabase at", this.lastSyncTime);
+    } catch (error) {
+      console.error("Failed to sync session to Supabase:", error);
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  /**
    * Load state from localStorage
    */
   loadFromLocalStorage() {
@@ -578,6 +777,22 @@ class GridTaskTracker {
         console.error("Error loading from localStorage:", e);
       }
     }
+  }
+
+  /**
+   * Re-initialize Supabase connection
+   * Called when user configures Supabase credentials
+   */
+  setupSupabase() {
+    this.db = getSupabaseClient();
+    if (!this.db) {
+      console.error("Supabase client not initialized");
+      return;
+    }
+    
+    console.log("Supabase client reconfigured");
+    // Re-sync any pending changes
+    this.syncToSupabase();
   }
 }
 
