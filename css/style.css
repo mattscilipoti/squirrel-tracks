@@ -52,6 +52,14 @@ body {
   font-size: 0.9rem;
 }
 
+.modal-content .setup-error {
+  padding: 10px;
+  border-left: 3px solid #b42318;
+  background: #fef3f2;
+  color: #912018;
+  overflow-wrap: anywhere;
+}
+
 .modal-content form {
   display: flex;
   flex-direction: column;

@@ -5,8 +5,9 @@
 
 // Initialize Supabase client
 // Can be set from config modal or localStorage
-let SUPABASE_URL = localStorage.getItem('supabase_url') || "https://YOUR_PROJECT.supabase.co";
-let SUPABASE_API_KEY = localStorage.getItem('supabase_key') || "YOUR_ANON_KEY";
+let SUPABASE_URL =
+  localStorage.getItem("supabase_url") || "https://YOUR_PROJECT.supabase.co";
+let SUPABASE_API_KEY = localStorage.getItem("supabase_key") || "YOUR_ANON_KEY";
 
 /**
  * Configure Supabase credentials (called from setup modal)
@@ -14,12 +15,21 @@ let SUPABASE_API_KEY = localStorage.getItem('supabase_key') || "YOUR_ANON_KEY";
 function configureSupabase(url, apiKey) {
   SUPABASE_URL = url;
   SUPABASE_API_KEY = apiKey;
-  localStorage.setItem('supabase_url', url);
-  localStorage.setItem('supabase_key', apiKey);
-  
+  localStorage.setItem("supabase_url", url);
+  localStorage.setItem("supabase_key", apiKey);
+
   // Re-initialize client
   supabaseClient = null;
   return getSupabaseClient();
+}
+
+function hasSupabaseConfig() {
+  return Boolean(
+    SUPABASE_URL &&
+    SUPABASE_API_KEY &&
+    !SUPABASE_URL.includes("YOUR_PROJECT") &&
+    SUPABASE_API_KEY !== "YOUR_ANON_KEY",
+  );
 }
 
 class SupabaseClient {
@@ -41,8 +51,12 @@ class SupabaseClient {
     const url = `${this.baseURL}${path}`;
     const options = {
       method,
-      headers: this.headers,
+      headers: { ...this.headers },
     };
+
+    if (method === "POST") {
+      options.headers.Prefer = "return=representation";
+    }
 
     if (data) {
       options.body = JSON.stringify(data);
@@ -80,7 +94,7 @@ class SupabaseClient {
   async getSession(sessionId) {
     const result = await this.request(
       "GET",
-      `/sessions?id=eq.${sessionId}&select=*,tasks(*)`
+      `/sessions?id=eq.${sessionId}&select=*,tasks(*)`,
     );
     return result?.[0] || null;
   }
@@ -110,12 +124,15 @@ class SupabaseClient {
     return this.request(
       "PATCH",
       `/tasks?id=eq.${taskId}&session_id=eq.${sessionId}`,
-      data
+      data,
     );
   }
 
   async deleteTask(sessionId, taskId) {
-    return this.request("DELETE", `/tasks?id=eq.${taskId}&session_id=eq.${sessionId}`);
+    return this.request(
+      "DELETE",
+      `/tasks?id=eq.${taskId}&session_id=eq.${sessionId}`,
+    );
   }
 
   /**
@@ -134,7 +151,7 @@ class SupabaseClient {
   async setInterval(sessionId, taskId, intervalIndex) {
     // First, delete any existing interval at this position
     await this.deleteIntervalAtIndex(sessionId, intervalIndex);
-    
+
     // If taskId is provided, create new interval
     if (taskId) {
       return this.createInterval(sessionId, taskId, intervalIndex);
@@ -146,29 +163,26 @@ class SupabaseClient {
     // Delete all intervals at this index for this session
     return this.request(
       "DELETE",
-      `/intervals?session_id=eq.${sessionId}&interval_index=eq.${intervalIndex}`
+      `/intervals?session_id=eq.${sessionId}&interval_index=eq.${intervalIndex}`,
     );
   }
 
   async deleteInterval(sessionId, taskId, intervalIndex) {
     return this.request(
       "DELETE",
-      `/intervals?session_id=eq.${sessionId}&task_id=eq.${taskId}&interval_index=eq.${intervalIndex}`
+      `/intervals?session_id=eq.${sessionId}&task_id=eq.${taskId}&interval_index=eq.${intervalIndex}`,
     );
   }
 
   async getSessionIntervals(sessionId) {
     return this.request(
       "GET",
-      `/intervals?session_id=eq.${sessionId}&select=task_id,interval_index,id`
+      `/intervals?session_id=eq.${sessionId}&select=task_id,interval_index,id`,
     );
   }
 
   async clearAllIntervals(sessionId) {
-    return this.request(
-      "DELETE",
-      `/intervals?session_id=eq.${sessionId}`
-    );
+    return this.request("DELETE", `/intervals?session_id=eq.${sessionId}`);
   }
 
   /**

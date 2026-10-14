@@ -18,6 +18,9 @@ class GridTaskTracker {
     this.db = getSupabaseClient();
     this.lastSyncTime = null;
     this.isSyncing = false;
+    this.isFullSyncing = false;
+    this.pendingWrites = new Set();
+    this.sessionInitialization = null;
 
     this.timerState = {
       isRunning: false,
@@ -28,7 +31,9 @@ class GridTaskTracker {
 
     this.initializeUI();
     this.loadFromLocalStorage();
-    this.initializeSession(); // Create/load session from Supabase
+    if (hasSupabaseConfig()) {
+      this.sessionInitialization = this.initializeSession();
+    }
     this.renderGrid();
     this.bindEvents();
     this.updateTaskCount();
@@ -51,7 +56,7 @@ class GridTaskTracker {
         const session = await this.db.getSession(this.sessionId);
         if (session) {
           console.log("Session loaded from Supabase:", this.sessionId);
-          this.restoreSessionData(session);
+          await this.loadSessionFromSupabase(session);
           return;
         }
       } catch (error) {
@@ -75,8 +80,9 @@ class GridTaskTracker {
       this.saveToLocalStorage();
     } catch (error) {
       console.error("Failed to create session:", error);
-      alert(
-        "Failed to create session. Check Supabase credentials and internet connection."
+      const message = error?.message || "Unknown Supabase error";
+      window.showSupabaseSetupModal?.(
+        `Failed to create session: ${message}. Check the database permissions or enter different project credentials.`,
       );
     }
   }
@@ -102,17 +108,38 @@ class GridTaskTracker {
     if (dateInput) dateInput.value = this.date;
     if (notesInput) notesInput.value = this.notes;
 
-    // Load tasks
-    if (session.tasks && session.tasks.length > 0) {
-      this.tasks = session.tasks.map((t) => t.name);
-      this.taskIdMap = {};
-      session.tasks.forEach((t) => {
-        this.taskIdMap[t.name] = t.id;
-      });
+    const sessionTasks = session.tasks || [];
+    this.tasks = sessionTasks.map((task) => task.name);
+    this.taskIdMap = {};
+    sessionTasks.forEach((task) => {
+      this.taskIdMap[task.name] = task.id;
+    });
+    this.gridData = this.tasks.map(() => new Array(60).fill(false));
+  }
 
-      // Initialize gridData
-      this.gridData = this.tasks.map(() => new Array(60).fill(false));
-    }
+  async loadSessionFromSupabase(session) {
+    this.restoreSessionData(session);
+    const intervals = await this.db.getSessionIntervals(this.sessionId);
+    const taskIndexById = new Map(
+      this.tasks.map((taskName, index) => [
+        String(this.taskIdMap[taskName]),
+        index,
+      ]),
+    );
+
+    intervals.forEach((interval) => {
+      const taskIndex = taskIndexById.get(String(interval.task_id));
+      const intervalIndex = Number(interval.interval_index);
+      if (taskIndex !== undefined && intervalIndex >= 0 && intervalIndex < 60) {
+        this.gridData[taskIndex][intervalIndex] = true;
+      }
+    });
+
+    this.renderGrid();
+    this.updateTaskCount();
+    this.updateSummary();
+    this.updateTimeCalculations();
+    this.saveToLocalStorage();
   }
 
   initializeUI() {
@@ -161,6 +188,9 @@ class GridTaskTracker {
     document
       .getElementById("clearGridBtn")
       .addEventListener("click", () => this.clearGrid());
+    document
+      .getElementById("syncReloadBtn")
+      .addEventListener("click", () => this.syncAndReloadFromSupabase());
 
     // Export/Clear
     document
@@ -205,7 +235,7 @@ class GridTaskTracker {
 
     // Sync to Supabase asynchronously
     if (this.sessionId) {
-      this.createTaskInSupabase(taskName);
+      this.trackPendingWrite(this.createTaskInSupabase(taskName));
     }
   }
 
@@ -244,7 +274,7 @@ class GridTaskTracker {
 
     // Delete from Supabase asynchronously
     if (this.sessionId && taskId) {
-      this.deleteTaskFromSupabase(taskId);
+      this.trackPendingWrite(this.deleteTaskFromSupabase(taskId));
     }
   }
 
@@ -422,11 +452,164 @@ class GridTaskTracker {
 
     // Sync to Supabase asynchronously
     if (this.sessionId) {
-      this.syncIntervalToSupabase(
-        intervalIdx,
-        taskIdx,
-        this.gridData[taskIdx][intervalIdx]
+      this.trackPendingWrite(
+        this.syncIntervalToSupabase(
+          intervalIdx,
+          taskIdx,
+          this.gridData[taskIdx][intervalIdx],
+        ),
       );
+    }
+  }
+
+  trackPendingWrite(write) {
+    const pending = Promise.resolve(write).finally(() => {
+      this.pendingWrites.delete(pending);
+    });
+    this.pendingWrites.add(pending);
+    return pending;
+  }
+
+  async waitForPendingWrites() {
+    while (this.pendingWrites.size > 0) {
+      await Promise.all([...this.pendingWrites]);
+    }
+  }
+
+  async syncAndReloadFromSupabase() {
+    const button = document.getElementById("syncReloadBtn");
+    if (this.isFullSyncing) return;
+    if (!hasSupabaseConfig()) {
+      window.showSupabaseSetupModal?.("Configure Supabase before syncing.");
+      return;
+    }
+
+    this.isFullSyncing = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Syncing...";
+    }
+
+    try {
+      if (this.sessionInitialization) await this.sessionInitialization;
+      if (!this.sessionId) await this.initializeSession();
+      if (!this.sessionId) throw new Error("No Supabase session is available.");
+
+      await this.waitForPendingWrites();
+
+      this.startTime = document.getElementById("startTimeInput")?.value || "";
+      this.memo = document.getElementById("memoInput")?.value || "";
+      this.date = document.getElementById("dateInput")?.value || this.date;
+      this.notes = document.getElementById("notesInput")?.value || "";
+      await this.db.updateSession(this.sessionId, {
+        start_time: this.startTime || null,
+        memo: this.memo || null,
+        date: this.date,
+        notes: this.notes || null,
+      });
+
+      const session = await this.db.getSession(this.sessionId);
+      if (!session)
+        throw new Error("The Supabase session could not be loaded.");
+
+      const remoteTasks = session.tasks || [];
+      const usedTaskIds = new Set();
+      const nextTaskIdMap = {};
+
+      for (const taskName of this.tasks) {
+        const knownId = this.taskIdMap[taskName];
+        let remoteTask = remoteTasks.find(
+          (task) =>
+            String(task.id) === String(knownId) &&
+            !usedTaskIds.has(String(task.id)),
+        );
+        if (!remoteTask) {
+          remoteTask = remoteTasks.find(
+            (task) =>
+              task.name === taskName && !usedTaskIds.has(String(task.id)),
+          );
+        }
+
+        let taskId = remoteTask?.id;
+        if (!taskId) {
+          const createdTask = await this.db.createTask(this.sessionId, {
+            name: taskName,
+            duration_minutes: 0,
+          });
+          taskId = createdTask?.id || createdTask?.[0]?.id;
+          if (!taskId) throw new Error(`Could not sync task "${taskName}".`);
+        }
+
+        nextTaskIdMap[taskName] = taskId;
+        usedTaskIds.add(String(taskId));
+      }
+
+      for (const task of remoteTasks) {
+        if (!usedTaskIds.has(String(task.id))) {
+          await this.db.deleteTask(this.sessionId, task.id);
+        }
+      }
+      this.taskIdMap = nextTaskIdMap;
+
+      const existingIntervals = await this.db.getSessionIntervals(
+        this.sessionId,
+      );
+      const desiredIntervals = new Map();
+      this.tasks.forEach((taskName, taskIndex) => {
+        const taskId = this.taskIdMap[taskName];
+        for (let intervalIndex = 0; intervalIndex < 60; intervalIndex++) {
+          if (this.gridData[taskIndex]?.[intervalIndex]) {
+            desiredIntervals.set(`${taskId}:${intervalIndex}`, {
+              taskId,
+              intervalIndex,
+            });
+          }
+        }
+      });
+
+      const existingIntervalKeys = new Set();
+      for (const interval of existingIntervals) {
+        const key = `${interval.task_id}:${interval.interval_index}`;
+        existingIntervalKeys.add(key);
+        if (!desiredIntervals.has(key)) {
+          await this.db.deleteInterval(
+            this.sessionId,
+            interval.task_id,
+            interval.interval_index,
+          );
+        }
+      }
+
+      for (const [key, interval] of desiredIntervals) {
+        if (!existingIntervalKeys.has(key)) {
+          await this.db.createInterval(
+            this.sessionId,
+            interval.taskId,
+            interval.intervalIndex,
+          );
+        }
+      }
+
+      const refreshedSession = await this.db.getSession(this.sessionId);
+      if (!refreshedSession)
+        throw new Error("The Supabase session could not be reloaded.");
+      await this.loadSessionFromSupabase(refreshedSession);
+      this.lastSyncTime = new Date().toISOString();
+      if (button) button.textContent = "Synced";
+      window.setTimeout(() => {
+        if (button) button.textContent = "Sync & Reload";
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to sync and reload from Supabase:", error);
+      alert(`Sync failed: ${error.message || "Unknown Supabase error"}`);
+    } finally {
+      this.isFullSyncing = false;
+      if (button) {
+        button.disabled = false;
+        if (button.textContent === "Syncing...") {
+          button.textContent = "Sync & Reload";
+        }
+      }
     }
   }
 
@@ -451,7 +634,7 @@ class GridTaskTracker {
         await this.db.deleteInterval(this.sessionId, taskId, intervalIdx);
       }
       console.log(
-        `Interval ${intervalIdx} for task ${taskName} synced (filled=${isFilled})`
+        `Interval ${intervalIdx} for task ${taskName} synced (filled=${isFilled})`,
       );
     } catch (error) {
       console.error("Failed to sync interval to Supabase:", error);
@@ -783,16 +966,15 @@ class GridTaskTracker {
    * Re-initialize Supabase connection
    * Called when user configures Supabase credentials
    */
-  setupSupabase() {
+  async setupSupabase() {
     this.db = getSupabaseClient();
-    if (!this.db) {
-      console.error("Supabase client not initialized");
+    if (!hasSupabaseConfig()) {
+      console.error("Supabase credentials are not configured");
       return;
     }
-    
-    console.log("Supabase client reconfigured");
-    // Re-sync any pending changes
-    this.syncToSupabase();
+
+    this.sessionInitialization = this.initializeSession();
+    await this.sessionInitialization;
   }
 }
 
