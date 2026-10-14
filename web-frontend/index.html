@@ -7,6 +7,31 @@
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
+    <!-- Supabase Setup Modal -->
+    <div id="supabaseSetupModal" class="modal">
+      <div class="modal-content">
+        <h2>Configure Supabase</h2>
+        <p>Enter your Supabase project credentials to enable cloud sync.</p>
+        <form id="supabaseSetupForm">
+          <label>
+            Project URL:
+            <input type="url" id="supabaseUrlInput" placeholder="https://your-project.supabase.co" required />
+          </label>
+          <label>
+            API Key (anon):
+            <input type="password" id="supabaseKeyInput" placeholder="your_anon_key" required />
+          </label>
+          <div class="modal-buttons">
+            <button type="submit" class="btn btn-primary">Connect to Supabase</button>
+            <button type="button" id="skipSupabaseBtn" class="btn btn-secondary">Use Local Only</button>
+          </div>
+        </form>
+        <p class="help-text">
+          Don't have Supabase? <a href="https://supabase.com" target="_blank">Create free project</a>
+        </p>
+      </div>
+    </div>
+
     <div class="container">
       <header>
         <div class="header-top">
@@ -219,7 +244,61 @@
       </footer>
     </div>
 
-    <script src="js/api-client.js"></script>
+    <script src="js/supabase-client.js"></script>
     <script src="js/app-grid.js"></script>
+    <script>
+      // Setup modal for Supabase credentials
+      document.addEventListener('DOMContentLoaded', () => {
+        const modal = document.getElementById('supabaseSetupModal');
+        const form = document.getElementById('supabaseSetupForm');
+        const urlInput = document.getElementById('supabaseUrlInput');
+        const keyInput = document.getElementById('supabaseKeyInput');
+        const skipBtn = document.getElementById('skipSupabaseBtn');
+
+        // Check if credentials already saved
+        const savedUrl = localStorage.getItem('supabase_url');
+        const savedKey = localStorage.getItem('supabase_key');
+
+        if (savedUrl && savedKey && savedUrl !== 'https://YOUR_PROJECT.supabase.co') {
+          // Credentials exist, hide modal and initialize
+          modal.classList.add('hidden');
+          initSupabaseClient(savedUrl, savedKey);
+        } else {
+          // Show modal
+          modal.classList.remove('hidden');
+          
+          // Pre-fill if partially saved
+          if (savedUrl) urlInput.value = savedUrl;
+          if (savedKey) keyInput.value = savedKey;
+        }
+
+        // Handle form submit
+        form.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const url = urlInput.value.trim();
+          const key = keyInput.value.trim();
+
+          if (!url || !key) {
+            alert('Please enter both URL and API key');
+            return;
+          }
+
+          // Save and initialize
+          configureSupabase(url, key);
+          modal.classList.add('hidden');
+          
+          // Reload tracker to use Supabase
+          if (window.tracker) {
+            window.tracker.setupSupabase();
+          }
+        });
+
+        // Handle skip button (local only mode)
+        skipBtn.addEventListener('click', () => {
+          modal.classList.add('hidden');
+          console.log('Using local storage only (no cloud sync)');
+        });
+      });
+    </script>
   </body>
 </html>
