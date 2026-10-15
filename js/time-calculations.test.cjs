@@ -2,6 +2,39 @@ const assert = require("node:assert/strict");
 const { describe, test } = require("node:test");
 const TimeCalculations = require("./time-calculations.js");
 
+test("centering accounts for sticky tasks and clamps at day edges", () => {
+  assert.equal(TimeCalculations.centeredScrollLeft(1500, 800, 200, 3200), 1000);
+  assert.equal(TimeCalculations.centeredScrollLeft(200, 800, 200, 3200), 0);
+  assert.equal(TimeCalculations.centeredScrollLeft(3190, 800, 200, 3200), 2400);
+});
+
+test("auto-centering pause counts down and expires", () => {
+  assert.equal(TimeCalculations.autoCenterSeconds(120000, 0), 120);
+  assert.equal(TimeCalculations.autoCenterSeconds(120000, 119001), 1);
+  assert.equal(TimeCalculations.autoCenterSeconds(120000, 120000), 0);
+  assert.equal(TimeCalculations.autoCenterSeconds(120000, 130000), 0);
+});
+
+test("legacy 9 AM grids retain their clock times in a midnight grid", () => {
+  const row = new Array(60).fill(false);
+  row[0] = true;
+  row[59] = true;
+  const normalized = TimeCalculations.normalizeGridRow(row);
+  assert.equal(normalized.length, 96);
+  assert.equal(normalized[0], false);
+  assert.equal(normalized[36], true);
+  assert.equal(normalized[95], true);
+  assert.deepEqual(TimeCalculations.normalizeGridRow(normalized), normalized);
+});
+
+test("full day positions include midnight, noon, and the final minute", () => {
+  for (const [hour, minute, intervalIndex, fraction] of [
+    [0, 0, 0, 0], [12, 0, 48, 0], [23, 59, 95, 14 / 15],
+  ]) {
+    assert.deepEqual(TimeCalculations.gridPosition(new Date(2026, 9, 15, hour, minute), 0, 96), { intervalIndex, fraction });
+  }
+});
+
 for (const timezone of ["America/New_York", "UTC", "Asia/Kolkata"]) {
   describe(timezone, () => {
     function inTimezone(run) {

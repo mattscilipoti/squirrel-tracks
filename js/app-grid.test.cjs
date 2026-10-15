@@ -14,6 +14,8 @@ function fixture(date = "2026-10-14") {
     ["timerDisplay", {}],
     ["startBtn", {}],
     ["pauseBtn", {}],
+    ["autoCenterStatus", { hidden: true }],
+    ["autoCenterCountdown", {}],
   ]);
   class FixedDate extends Date {
     constructor(...args) {
@@ -59,6 +61,57 @@ function fixture(date = "2026-10-14") {
   });
   return { tracker, storage, elements };
 }
+
+test("pause status displays a countdown and disappears at expiry", () => {
+  const { tracker, elements } = fixture();
+  tracker.autoCenterPausedUntil = 121000;
+  assert.equal(tracker.updateAutoCenterStatus(1000), 120);
+  assert.equal(elements.autoCenterStatus.hidden, false);
+  assert.equal(elements.autoCenterCountdown.textContent, "2:00");
+  tracker.updateAutoCenterStatus(62000);
+  assert.equal(elements.autoCenterCountdown.textContent, "0:59");
+  assert.equal(tracker.updateAutoCenterStatus(121000), 0);
+  assert.equal(elements.autoCenterStatus.hidden, true);
+});
+
+test("resume clears the pause and immediately updates the indicator", () => {
+  const { tracker, elements } = fixture();
+  tracker.autoCenterPausedUntil = 9999999999999;
+  let updated = false;
+  tracker.updateCurrentTimeLine = () => { updated = true; };
+  tracker.resumeAutoCentering();
+  assert.equal(tracker.autoCenterPausedUntil, 0);
+  assert.equal(elements.autoCenterStatus.hidden, true);
+  assert.equal(updated, true);
+});
+
+test("loading a legacy local grid shifts 9 AM entries to slot 36", () => {
+  const { tracker, storage } = fixture();
+  const row = new Array(60).fill(false);
+  row[0] = true;
+  storage.set("ettGridState", JSON.stringify({
+    tasks: ["Legacy"], gridData: [row], date: "2026-10-15",
+  }));
+  tracker.loadFromLocalStorage();
+  assert.equal(tracker.gridData[0].length, 96);
+  assert.equal(tracker.gridData[0][0], false);
+  assert.equal(tracker.gridData[0][36], true);
+});
+
+test("cloud restoration accepts the final interval of a full day", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.db = { getSessionIntervals: async () => [
+    { task_id: "task-id", interval_index: 95 },
+  ] };
+  for (const method of ["renderGrid", "updateTaskCount", "updateSummary", "updateTimeCalculations"]) {
+    tracker[method] = () => {};
+  }
+  await tracker.loadSessionFromSupabase({
+    id: "today", date: "2026-10-15", tasks: [{ id: "task-id", name: "Late task" }],
+  });
+  assert.equal(tracker.gridData[0].length, 96);
+  assert.equal(tracker.gridData[0][95], true);
+});
 
 test("rollover archives yesterday and starts a clean local day", () => {
   const { tracker, storage, elements } = fixture();
