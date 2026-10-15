@@ -2,6 +2,53 @@ const assert = require("node:assert/strict");
 const { describe, test } = require("node:test");
 const TimeCalculations = require("./time-calculations.js");
 
+test("empty grids have no activity summaries", () => {
+  for (const grid of [[], [new Array(96).fill(false)]]) {
+    assert.deepEqual(TimeCalculations.activitySummary(grid), {
+      firstActivity: "--", lastActivity: "--", sessionSpan: "--",
+      trackedTime: "--", trackedMinutes: 0,
+    });
+  }
+});
+
+test("activity span includes gaps while tracked time deduplicates overlapping tasks", () => {
+  const first = new Array(96).fill(false);
+  const second = new Array(96).fill(false);
+  first[36] = true;
+  first[40] = true;
+  second[36] = true;
+  const original = JSON.stringify([first, second]);
+  assert.deepEqual(TimeCalculations.activitySummary([first, second]), {
+    firstActivity: "09:00", lastActivity: "10:15", sessionSpan: "1h 15m",
+    trackedTime: "0h 30m", trackedMinutes: 30,
+  });
+  assert.equal(JSON.stringify([first, second]), original);
+});
+
+test("single final bubble ends at 24:00 and removing it clears summaries", () => {
+  const row = new Array(96).fill(false);
+  row[95] = true;
+  assert.deepEqual(TimeCalculations.activitySummary([row]), {
+    firstActivity: "23:45", lastActivity: "24:00", sessionSpan: "0h 15m",
+    trackedTime: "0h 15m", trackedMinutes: 15,
+  });
+  row[95] = false;
+  assert.equal(TimeCalculations.activitySummary([row]).firstActivity, "--");
+});
+
+test("a filled day spans and tracks 24 hours", () => {
+  assert.deepEqual(TimeCalculations.activitySummary([new Array(96).fill(true)]), {
+    firstActivity: "00:00", lastActivity: "24:00", sessionSpan: "24h 0m",
+    trackedTime: "24h 0m", trackedMinutes: 1440,
+  });
+});
+
+test("current slot follows local clock quarter-hours independently of activity", () => {
+  for (const [hour, minute, slot] of [[0, 0, 1], [0, 14, 1], [0, 15, 2], [13, 0, 53], [23, 59, 96]]) {
+    assert.equal(TimeCalculations.currentSlot(new Date(2026, 9, 15, hour, minute)), slot);
+  }
+});
+
 test("centering accounts for sticky tasks and clamps at day edges", () => {
   assert.equal(TimeCalculations.centeredScrollLeft(1500, 800, 200, 3200), 1000);
   assert.equal(TimeCalculations.centeredScrollLeft(200, 800, 200, 3200), 0);
@@ -29,9 +76,14 @@ test("legacy 9 AM grids retain their clock times in a midnight grid", () => {
 
 test("full day positions include midnight, noon, and the final minute", () => {
   for (const [hour, minute, intervalIndex, fraction] of [
-    [0, 0, 0, 0], [12, 0, 48, 0], [23, 59, 95, 14 / 15],
+    [0, 0, 0, 0],
+    [12, 0, 48, 0],
+    [23, 59, 95, 14 / 15],
   ]) {
-    assert.deepEqual(TimeCalculations.gridPosition(new Date(2026, 9, 15, hour, minute), 0, 96), { intervalIndex, fraction });
+    assert.deepEqual(
+      TimeCalculations.gridPosition(new Date(2026, 9, 15, hour, minute), 0, 96),
+      { intervalIndex, fraction },
+    );
   }
 });
 
@@ -48,102 +100,31 @@ for (const timezone of ["America/New_York", "UTC", "Asia/Kolkata"]) {
       }
     }
 
-    test("9 AM to 1 PM is 16 completed intervals and current interval 17", () =>
+    test("1 PM is slot 53 regardless of the first activity", () =>
       inTimezone(() => {
         const now = new Date(2026, 9, 15, 13);
         const original = now.getTime();
-        assert.deepEqual(
-          TimeCalculations.sessionTime(now, "09:00", "2026-10-15"),
-          {
-            endTime: "00:00",
-            elapsedText: "4h 0m",
-            intervalText: "17 (Hour 5.1)",
-            elapsedMinutes: 240,
-            intervalsElapsed: 16,
-          },
-        );
+        assert.equal(TimeCalculations.currentSlot(now), 53);
         assert.equal(now.getTime(), original);
       }));
 
-    test("selected previous date is not shifted back an extra day", () =>
-      inTimezone(() => {
-        const result = TimeCalculations.sessionTime(
-          new Date(2026, 9, 15, 12, 56, 22),
-          "09:00",
-          "2026-10-14",
-        );
-        assert.equal(result.elapsedMinutes, 1676);
-        assert.equal(result.elapsedText, "27h 56m");
-        assert.equal(result.intervalsElapsed, 111);
-        assert.equal(result.intervalText, "Complete");
-      }));
-
-    test("missing date falls back to the supplied local day near midnight", () =>
+    test("local date remains correct near midnight", () =>
       inTimezone(() => {
         for (const hour of [0, 23]) {
           const now = new Date(2026, 9, 15, hour, 30);
           assert.equal(TimeCalculations.localDate(now), "2026-10-15");
-          assert.equal(
-            TimeCalculations.sessionTime(now, "00:00", "").elapsedMinutes,
-            hour * 60 + 30,
-          );
+          assert.equal(TimeCalculations.currentSlot(now), hour * 4 + 3);
         }
       }));
 
-    test("missing start time produces empty display values", () =>
+    test("activity boundaries are grid times, not UTC-converted dates", () =>
       inTimezone(() => {
-        assert.deepEqual(
-          TimeCalculations.sessionTime(
-            new Date(2026, 9, 15, 13),
-            "",
-            "2026-10-15",
-          ),
-          {
-            endTime: "--:--",
-            elapsedText: "0h 0m",
-            intervalText: "-",
-            elapsedMinutes: null,
-            intervalsElapsed: null,
-          },
-        );
-      }));
-
-    test("session status changes at start, quarter-hour, and 15-hour boundaries", () =>
-      inTimezone(() => {
-        for (const [hour, minute, second, expected] of [
-          [8, 59, 59, "Not started"],
-          [9, 0, 0, "1 (Hour 1.1)"],
-          [9, 14, 59, "1 (Hour 1.1)"],
-          [9, 15, 0, "2 (Hour 1.2)"],
-          [23, 59, 59, "60 (Hour 15.4)"],
-        ]) {
-          const result = TimeCalculations.sessionTime(
-            new Date(2026, 9, 15, hour, minute, second),
-            "09:00",
-            "2026-10-15",
-          );
-          assert.equal(result.intervalText, expected);
-        }
-        for (const minute of [0, 1]) {
-          const result = TimeCalculations.sessionTime(
-            new Date(2026, 9, 16, 0, minute),
-            "09:00",
-            "2026-10-15",
-          );
-          assert.equal(result.intervalText, "Complete");
-        }
-      }));
-
-    test("start minutes are preserved when calculating the end time", () =>
-      inTimezone(() => {
-        assert.equal(
-          TimeCalculations.sessionTime(
-            new Date(2026, 9, 15, 13),
-            "10:30",
-            "2026-10-15",
-          ).endTime,
-          "01:30",
-        );
+        const row = new Array(96).fill(false);
+        row[36] = true;
+        row[95] = true;
+        const summary = TimeCalculations.activitySummary([row]);
+        assert.equal(summary.firstActivity, "09:00");
+        assert.equal(summary.lastActivity, "24:00");
       }));
 
     test("line position follows table hours and advances within each column", () =>

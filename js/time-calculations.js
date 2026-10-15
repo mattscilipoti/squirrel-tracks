@@ -14,7 +14,8 @@ const TimeCalculations = {
     const normalized = new Array(96).fill(false);
     const offset = row.length === 60 ? 36 : 0;
     row.forEach((value, index) => {
-      if (index + offset < normalized.length) normalized[index + offset] = value;
+      if (index + offset < normalized.length)
+        normalized[index + offset] = value;
     });
     return normalized;
   },
@@ -26,48 +27,35 @@ const TimeCalculations = {
     return `${year}-${month}-${day}`;
   },
 
-  sessionTime(now, startTime, date) {
-    if (!startTime) {
+  activitySummary(gridData) {
+    const filledSlots = [];
+    for (let index = 0; index < this.intervalCount; index++) {
+      if (gridData.some((row) => row[index])) filledSlots.push(index);
+    }
+    if (!filledSlots.length) {
       return {
-        endTime: "--:--",
-        elapsedText: "0h 0m",
-        intervalText: "-",
-        elapsedMinutes: null,
-        intervalsElapsed: null,
+        firstActivity: "--", lastActivity: "--", sessionSpan: "--",
+        trackedTime: "--", trackedMinutes: 0,
       };
     }
 
-    const [startHour, startMinute] = startTime.split(":").map(Number);
-    const startDate = date
-      ? new Date(`${date}T00:00:00`)
-      : new Date(now.getTime());
-    startDate.setHours(startHour, startMinute, 0, 0);
-
-    const endDate = new Date(startDate);
-    endDate.setHours(endDate.getHours() + 15);
-    const endHour = String(endDate.getHours()).padStart(2, "0");
-    const endMinute = String(endDate.getMinutes()).padStart(2, "0");
-    const elapsedMinutes = Math.floor((now - startDate) / 60000);
-    const intervalsElapsed = Math.floor(elapsedMinutes / 15);
-    let intervalText;
-
-    if (elapsedMinutes < 0) {
-      intervalText = "Not started";
-    } else if (intervalsElapsed >= 60) {
-      intervalText = "Complete";
-    } else {
-      const intervalHour = Math.floor(intervalsElapsed / 4) + 1;
-      const intervalInHour = (intervalsElapsed % 4) + 1;
-      intervalText = `${intervalsElapsed + 1} (Hour ${intervalHour}.${intervalInHour})`;
-    }
-
+    const firstMinute = filledSlots[0] * 15;
+    const lastMinute = (filledSlots[filledSlots.length - 1] + 1) * 15;
+    const clockTime = (minutes) =>
+      `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+    const duration = (minutes) => `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+    const trackedMinutes = filledSlots.length * 15;
     return {
-      endTime: `${endHour}:${endMinute}`,
-      elapsedText: `${Math.floor(elapsedMinutes / 60)}h ${elapsedMinutes % 60}m`,
-      intervalText,
-      elapsedMinutes,
-      intervalsElapsed,
+      firstActivity: clockTime(firstMinute),
+      lastActivity: clockTime(lastMinute),
+      sessionSpan: duration(lastMinute - firstMinute),
+      trackedTime: duration(trackedMinutes),
+      trackedMinutes,
     };
+  },
+
+  currentSlot(now) {
+    return Math.floor((now.getHours() * 60 + now.getMinutes()) / 15) + 1;
   },
 
   gridPosition(now, startHour, columnCount) {

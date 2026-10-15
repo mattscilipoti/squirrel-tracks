@@ -68,18 +68,21 @@
             TASKS: <span class="form-value" id="tasksValue">0</span>
           </label>
           <label>
-            START TIME:
-            <input type="time" id="startTimeInput" class="form-input-small" />
+            FIRST ACTIVITY:
+            <span class="form-value" id="firstActivityDisplay">--</span>
           </label>
           <label>
-            END TIME: <span class="form-value" id="endTimeDisplay">--:--</span>
+            LAST ACTIVITY: <span class="form-value" id="lastActivityDisplay">--</span>
           </label>
           <label>
-            ELAPSED: <span class="form-value" id="elapsedDisplay">0h 0m</span>
+            SESSION SPAN: <span class="form-value" id="sessionSpanDisplay">--</span>
           </label>
           <label>
-            CURRENT INTERVAL:
-            <span class="form-value" id="currentIntervalDisplay">-</span>
+            TRACKED TIME: <span class="form-value" id="trackedTimeDisplay">--</span>
+          </label>
+          <label>
+            CURRENT SLOT:
+            <span class="form-value" id="currentSlotDisplay">--</span>
           </label>
           <label>
             MEMO:
@@ -147,8 +150,15 @@
 
         <!-- Time Grid -->
         <div id="autoCenterStatus" class="auto-center-status" hidden>
-          <span>Auto-centering paused: <span id="autoCenterCountdown" role="timer">2:00</span></span>
-          <button id="resumeAutoCenterBtn" class="btn btn-secondary btn-small" type="button">
+          <span
+            >Auto-centering paused:
+            <span id="autoCenterCountdown" role="timer">2:00</span></span
+          >
+          <button
+            id="resumeAutoCenterBtn"
+            class="btn btn-secondary btn-small"
+            type="button"
+          >
             Resume auto-centering
           </button>
         </div>
