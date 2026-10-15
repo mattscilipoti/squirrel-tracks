@@ -1,6 +1,6 @@
 /**
  * GridTaskTracker - Circle/bubble-based task time tracker
- * Implements a 15-hour × 60-interval grid matching the paper Emergent Task Timer
+ * Implements a 24-hour grid of 15-minute intervals
  * Uses Supabase for backend data storage and sync
  */
 class GridTaskTracker {
@@ -22,6 +22,8 @@ class GridTaskTracker {
     this.pendingWrites = new Set();
     this.sessionInitialization = null;
     this.isInitializingSession = false;
+    this.autoCenterPausedUntil = 0;
+    this.autoCenterScrollLeft = null;
 
     this.timerState = {
       isRunning: false,
@@ -55,6 +57,11 @@ class GridTaskTracker {
 
     // Auto-sync to Supabase every 30 seconds
     setInterval(() => this.syncToSupabase(), 30000);
+    setInterval(() => {
+      if (this.autoCenterPausedUntil && !this.updateAutoCenterStatus()) {
+        this.resumeAutoCentering();
+      }
+    }, 1000);
   }
 
   /**
@@ -142,7 +149,7 @@ class GridTaskTracker {
     sessionTasks.forEach((task) => {
       this.taskIdMap[task.name] = task.id;
     });
-    this.gridData = this.tasks.map(() => new Array(60).fill(false));
+    this.gridData = this.tasks.map(() => new Array(TimeCalculations.intervalCount).fill(false));
   }
 
   async loadSessionFromSupabase(session) {
@@ -158,7 +165,7 @@ class GridTaskTracker {
     intervals.forEach((interval) => {
       const taskIndex = taskIndexById.get(String(interval.task_id));
       const intervalIndex = Number(interval.interval_index);
-      if (taskIndex !== undefined && intervalIndex >= 0 && intervalIndex < 60) {
+      if (taskIndex !== undefined && intervalIndex >= 0 && intervalIndex < TimeCalculations.intervalCount) {
         this.gridData[taskIndex][intervalIndex] = true;
       }
     });
@@ -171,6 +178,24 @@ class GridTaskTracker {
   }
 
   initializeUI() {
+    this.initializeGridHeader();
+    const container = document.querySelector(".grid-container");
+    container.tabIndex = 0;
+    container.setAttribute("aria-label", "Daily time grid");
+    container.addEventListener("scroll", () => {
+      if (
+        this.autoCenterScrollLeft !== null &&
+        Math.abs(container.scrollLeft - this.autoCenterScrollLeft) < 1
+      ) return;
+      this.autoCenterScrollLeft = null;
+      this.autoCenterPausedUntil = Date.now() + 120000;
+      this.updateAutoCenterStatus();
+      this.updateCurrentTimeLine(new Date(), false);
+    }, { passive: true });
+    document.getElementById("resumeAutoCenterBtn").addEventListener("click", () => {
+      this.resumeAutoCentering();
+    });
+
     // Timer buttons
     document
       .getElementById("startBtn")
@@ -256,7 +281,7 @@ class GridTaskTracker {
    */
   addTask(taskName) {
     this.tasks.push(taskName);
-    this.gridData.push(new Array(60).fill(false)); // 60 intervals, all empty
+    this.gridData.push(new Array(TimeCalculations.intervalCount).fill(false));
     this.renderGrid();
     this.updateSummary();
     this.updateTaskCount();
@@ -352,13 +377,64 @@ class GridTaskTracker {
       result.intervalText;
   }
 
-  updateCurrentTimeLine(now = new Date()) {
+  initializeGridHeader() {
+    const table = document.getElementById("timeGrid");
+    const columns = document.createElement("colgroup");
+    const taskColumn = document.createElement("col");
+    taskColumn.className = "task-grid-column";
+    columns.appendChild(taskColumn);
+    const hourRow = document.createElement("tr");
+    const intervalRow = document.createElement("tr");
+    hourRow.className = "hour-header";
+    intervalRow.className = "interval-header";
+    for (const row of [hourRow, intervalRow]) {
+      const heading = document.createElement("th");
+      heading.className = "task-column";
+      heading.textContent = row === hourRow ? "TASK" : "";
+      row.appendChild(heading);
+    }
+    for (let hour = 0; hour < 24; hour++) {
+      const heading = document.createElement("th");
+      heading.colSpan = 4;
+      heading.className = "hour-label";
+      heading.textContent = `${String(hour).padStart(2, "0")}:00`;
+      hourRow.appendChild(heading);
+    }
+    for (let index = 0; index < TimeCalculations.intervalCount; index++) {
+      const column = document.createElement("col");
+      column.className = "interval-grid-column";
+      columns.appendChild(column);
+      const heading = document.createElement("th");
+      heading.className = "interval-number";
+      heading.dataset.interval = index;
+      heading.textContent = String((index % 4) * 15).padStart(2, "0");
+      intervalRow.appendChild(heading);
+    }
+    table.prepend(columns);
+    table.tHead.replaceChildren(hourRow, intervalRow);
+  }
+
+  updateAutoCenterStatus(now = Date.now()) {
+    const seconds = TimeCalculations.autoCenterSeconds(this.autoCenterPausedUntil, now);
+    document.getElementById("autoCenterStatus").hidden = seconds === 0;
+    document.getElementById("autoCenterCountdown").textContent =
+      `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+    return seconds;
+  }
+
+  resumeAutoCentering() {
+    this.autoCenterPausedUntil = 0;
+    this.updateAutoCenterStatus();
+    this.updateCurrentTimeLine();
+  }
+
+  updateCurrentTimeLine(now = new Date(), autoCenter = true) {
     const line = document.getElementById("currentTimeLine");
     const table = document.getElementById("timeGrid");
     const container = table.parentElement;
     const body = table.tBodies[0];
     const columns = table.querySelectorAll(".interval-number");
-    const startHour = Number(table.querySelector(".hour-label").textContent);
+    const startHour = 0;
     const position = TimeCalculations.gridPosition(
       now,
       startHour,
@@ -366,15 +442,23 @@ class GridTaskTracker {
     );
 
     line.hidden = !body.rows.length || !position;
-    if (line.hidden) return;
+    if (!position) return;
 
     const { intervalIndex, fraction } = position;
     const columnRect = columns[intervalIndex].getBoundingClientRect();
     const bodyRect = body.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
-    line.style.left = `${columnRect.left + columnRect.width * fraction - containerRect.left - container.clientLeft + container.scrollLeft}px`;
+    const timeOffset = columnRect.left + columnRect.width * fraction - containerRect.left - container.clientLeft + container.scrollLeft;
+    line.style.left = `${timeOffset}px`;
     line.style.top = `${bodyRect.top - containerRect.top - container.clientTop + container.scrollTop}px`;
     line.style.height = `${bodyRect.height}px`;
+    if (autoCenter && !this.updateAutoCenterStatus()) {
+      const stickyWidth = table.querySelector(".task-column").getBoundingClientRect().width;
+      container.scrollLeft = TimeCalculations.centeredScrollLeft(
+        timeOffset, container.clientWidth, stickyWidth, container.scrollWidth,
+      );
+      this.autoCenterScrollLeft = container.scrollLeft;
+    }
   }
 
   /**
@@ -415,8 +499,8 @@ class GridTaskTracker {
 
       row.appendChild(taskCell);
 
-      // 60 interval cells with circles
-      for (let intervalIdx = 0; intervalIdx < 60; intervalIdx++) {
+      // One cell for each 15-minute interval of the day
+      for (let intervalIdx = 0; intervalIdx < TimeCalculations.intervalCount; intervalIdx++) {
         const hourIdx = Math.floor(intervalIdx / 4);
 
         const cell = document.createElement("td");
@@ -571,7 +655,7 @@ class GridTaskTracker {
       const desiredIntervals = new Map();
       this.tasks.forEach((taskName, taskIndex) => {
         const taskId = this.taskIdMap[taskName];
-        for (let intervalIndex = 0; intervalIndex < 60; intervalIndex++) {
+        for (let intervalIndex = 0; intervalIndex < TimeCalculations.intervalCount; intervalIndex++) {
           if (this.gridData[taskIndex]?.[intervalIndex]) {
             desiredIntervals.set(`${taskId}:${intervalIndex}`, {
               taskId,
@@ -677,7 +761,7 @@ class GridTaskTracker {
     }
 
     // Apply pattern to remaining 14 hours
-    for (let hour = 1; hour < 15; hour++) {
+    for (let hour = 1; hour < 24; hour++) {
       for (let intervalInHour = 0; intervalInHour < 4; intervalInHour++) {
         const sourceIntervalIdx = intervalInHour;
         const targetIntervalIdx = hour * 4 + intervalInHour;
@@ -700,7 +784,7 @@ class GridTaskTracker {
   clearGrid() {
     if (!confirm("Clear all interval assignments? (Tasks will remain)")) return;
 
-    this.gridData = this.tasks.map(() => new Array(60).fill(false));
+    this.gridData = this.tasks.map(() => new Array(TimeCalculations.intervalCount).fill(false));
     this.renderGrid();
     this.updateSummary();
   }
@@ -986,7 +1070,7 @@ class GridTaskTracker {
       try {
         const state = JSON.parse(saved);
         this.tasks = state.tasks || [];
-        this.gridData = state.gridData || [];
+        this.gridData = (state.gridData || []).map((row) => TimeCalculations.normalizeGridRow(row));
         this.sessionId = state.sessionId;
         this.startTime = state.startTime || "";
         this.memo = state.memo || "";
@@ -1007,7 +1091,7 @@ class GridTaskTracker {
         // Initialize grid data for tasks if not present
         if (this.gridData.length < this.tasks.length) {
           for (let i = this.gridData.length; i < this.tasks.length; i++) {
-            this.gridData.push(new Array(60).fill(false));
+            this.gridData.push(new Array(TimeCalculations.intervalCount).fill(false));
           }
         }
       } catch (e) {

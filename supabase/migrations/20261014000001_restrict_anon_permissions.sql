@@ -1,3 +1,13 @@
+-- Purpose: replace broad demo access with the operations used by the frontend.
+-- Revoke table privileges from public, anon, and authenticated, then allow anon
+-- to select/insert/update sessions and select/insert/delete tasks and intervals.
+-- Replace legacy all-operation policies with operation-specific anon policies.
+-- This limits operations, not row visibility: anonymous users can still access
+-- all rows for the permitted operations. It does not provide per-user isolation.
+-- Apply after creating the ETT tables. Run once; the new policy names must not
+-- already exist when this script creates them.
+-- Executed at (datetime and timezone): 2026-10-14
+
 revoke all privileges on table public.sessions, public.tasks, public.intervals
   from public, anon, authenticated;
 

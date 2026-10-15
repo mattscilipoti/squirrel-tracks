@@ -1,3 +1,12 @@
+-- Purpose: create the ETT sessions, tasks, and intervals tables, relationships,
+-- indexes, and the original 60-slot daily grid (09:00-midnight).
+-- Enable row-level security and grant demo read/write access to anon and
+-- authenticated roles. These permissive policies do not isolate users' data;
+-- anyone with the public anon key can read and change all rows.
+-- Apply before the permission-restriction and full-day-grid migrations.
+-- Do not re-run after restricting permissions: this reinstates broad demo access.
+-- Executed at (datetime and timezone): ________________________________
+
 create table if not exists public.sessions (
   id bigint generated always as identity primary key,
   status text not null default 'active' check (status in ('active', 'completed')),

@@ -158,6 +158,21 @@ retained in `ettGridHistory` in browser localStorage. There is no past-session
 review screen yet. Local history is browser-specific and clearing site data
 removes it.
 
+The grid covers midnight to midnight in 96 quarter-hour slots. Current time is
+automatically centered in the scrollable area beside the sticky task names.
+Manual horizontal scrolling pauses centering for two minutes and displays a
+countdown with a resume button. The time indicator continues updating during
+the pause; centering resumes automatically at expiry. Day edges clamp to the
+available scroll range.
+
+Before using this version with Supabase, apply
+[`20261015000000_expand_daily_grid.sql`](supabase/migrations/20261015000000_expand_daily_grid.sql)
+once through your migration workflow or Supabase SQL Editor. Close older app
+tabs before migrating and reload them afterward. The migration expands the
+database interval range and shifts legacy 9 AM-based entries by 36 slots to
+preserve their clock times. Local 60-slot grids are converted automatically on
+load. Do not use the expanded frontend with an unmigrated database.
+
 ### JavaScript Tests
 
 From the repository root, run:
@@ -171,6 +186,8 @@ dates and times to the calculation helpers without a browser or a mocked clock.
 Coverage includes local-date parsing, elapsed intervals, completion boundaries,
 and current-time line positions in Eastern, UTC, and India timezones. Session
 tests cover daily rollover, local archival, same-day reuse, and active-write guards.
+Additional tests cover centering geometry, pause countdowns, resume behavior,
+legacy grid conversion, and late-night intervals.
 
 ---
 

@@ -146,6 +146,12 @@
         </section>
 
         <!-- Time Grid -->
+        <div id="autoCenterStatus" class="auto-center-status" hidden>
+          <span>Auto-centering paused: <span id="autoCenterCountdown" role="timer">2:00</span></span>
+          <button id="resumeAutoCenterBtn" class="btn btn-secondary btn-small" type="button">
+            Resume auto-centering
+          </button>
+        </div>
         <section class="grid-section">
           <div class="grid-container">
             <div
@@ -155,90 +161,7 @@
               hidden
             ></div>
             <table class="time-grid" id="timeGrid">
-              <thead>
-                <tr class="hour-header">
-                  <th class="task-column">TASK</th>
-                  <th colspan="4" class="hour-label" data-hour="1">9</th>
-                  <th colspan="4" class="hour-label" data-hour="2">10</th>
-                  <th colspan="4" class="hour-label" data-hour="3">11</th>
-                  <th colspan="4" class="hour-label" data-hour="4">12</th>
-                  <th colspan="4" class="hour-label" data-hour="5">1</th>
-                  <th colspan="4" class="hour-label" data-hour="6">2</th>
-                  <th colspan="4" class="hour-label" data-hour="7">3</th>
-                  <th colspan="4" class="hour-label" data-hour="8">4</th>
-                  <th colspan="4" class="hour-label" data-hour="9">5</th>
-                  <th colspan="4" class="hour-label" data-hour="10">6</th>
-                  <th colspan="4" class="hour-label" data-hour="11">7</th>
-                  <th colspan="4" class="hour-label" data-hour="12">8</th>
-                  <th colspan="4" class="hour-label" data-hour="13">9</th>
-                  <th colspan="4" class="hour-label" data-hour="14">10</th>
-                  <th colspan="4" class="hour-label" data-hour="15">11</th>
-                </tr>
-                <tr class="interval-header">
-                  <th class="task-column"></th>
-                  <th class="interval-number" data-interval="0">●</th>
-                  <th class="interval-number" data-interval="1">●</th>
-                  <th class="interval-number" data-interval="2">●</th>
-                  <th class="interval-number" data-interval="3">●</th>
-                  <!-- Repeated 14 more times for remaining hours -->
-                  <th class="interval-number" data-interval="4">●</th>
-                  <th class="interval-number" data-interval="5">●</th>
-                  <th class="interval-number" data-interval="6">●</th>
-                  <th class="interval-number" data-interval="7">●</th>
-                  <th class="interval-number" data-interval="8">●</th>
-                  <th class="interval-number" data-interval="9">●</th>
-                  <th class="interval-number" data-interval="10">●</th>
-                  <th class="interval-number" data-interval="11">●</th>
-                  <th class="interval-number" data-interval="12">●</th>
-                  <th class="interval-number" data-interval="13">●</th>
-                  <th class="interval-number" data-interval="14">●</th>
-                  <th class="interval-number" data-interval="15">●</th>
-                  <th class="interval-number" data-interval="16">●</th>
-                  <th class="interval-number" data-interval="17">●</th>
-                  <th class="interval-number" data-interval="18">●</th>
-                  <th class="interval-number" data-interval="19">●</th>
-                  <th class="interval-number" data-interval="20">●</th>
-                  <th class="interval-number" data-interval="21">●</th>
-                  <th class="interval-number" data-interval="22">●</th>
-                  <th class="interval-number" data-interval="23">●</th>
-                  <th class="interval-number" data-interval="24">●</th>
-                  <th class="interval-number" data-interval="25">●</th>
-                  <th class="interval-number" data-interval="26">●</th>
-                  <th class="interval-number" data-interval="27">●</th>
-                  <th class="interval-number" data-interval="28">●</th>
-                  <th class="interval-number" data-interval="29">●</th>
-                  <th class="interval-number" data-interval="30">●</th>
-                  <th class="interval-number" data-interval="31">●</th>
-                  <th class="interval-number" data-interval="32">●</th>
-                  <th class="interval-number" data-interval="33">●</th>
-                  <th class="interval-number" data-interval="34">●</th>
-                  <th class="interval-number" data-interval="35">●</th>
-                  <th class="interval-number" data-interval="36">●</th>
-                  <th class="interval-number" data-interval="37">●</th>
-                  <th class="interval-number" data-interval="38">●</th>
-                  <th class="interval-number" data-interval="39">●</th>
-                  <th class="interval-number" data-interval="40">●</th>
-                  <th class="interval-number" data-interval="41">●</th>
-                  <th class="interval-number" data-interval="42">●</th>
-                  <th class="interval-number" data-interval="43">●</th>
-                  <th class="interval-number" data-interval="44">●</th>
-                  <th class="interval-number" data-interval="45">●</th>
-                  <th class="interval-number" data-interval="46">●</th>
-                  <th class="interval-number" data-interval="47">●</th>
-                  <th class="interval-number" data-interval="48">●</th>
-                  <th class="interval-number" data-interval="49">●</th>
-                  <th class="interval-number" data-interval="50">●</th>
-                  <th class="interval-number" data-interval="51">●</th>
-                  <th class="interval-number" data-interval="52">●</th>
-                  <th class="interval-number" data-interval="53">●</th>
-                  <th class="interval-number" data-interval="54">●</th>
-                  <th class="interval-number" data-interval="55">●</th>
-                  <th class="interval-number" data-interval="56">●</th>
-                  <th class="interval-number" data-interval="57">●</th>
-                  <th class="interval-number" data-interval="58">●</th>
-                  <th class="interval-number" data-interval="59">●</th>
-                </tr>
-              </thead>
+              <thead></thead>
               <tbody id="gridBody">
                 <!-- Rows generated by JS -->
               </tbody>
