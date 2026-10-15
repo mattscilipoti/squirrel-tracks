@@ -165,6 +165,17 @@ countdown with a resume button. The time indicator continues updating during
 the pause; centering resumes automatically at expiry. Day edges clamp to the
 available scroll range.
 
+The header summarizes filled bubbles rather than an editable work window.
+First Activity is the earliest filled slot's start; Last Activity is the latest
+filled slot's end (shown as `24:00` for the final slot). Session Span includes
+gaps between those boundaries. Tracked Time counts distinct filled slots once,
+even when several tasks share a slot; per-task totals still count each task's
+bubbles. Empty activity summaries show `--`. Current Slot follows the local
+clock from slot 1 at midnight to slot 96 at 23:45, independently of activity.
+The existing saved `start_time` field now reflects First Activity, and CSV
+metadata includes all four activity summaries. No schema migration is needed
+for this header change.
+
 Before using this version with Supabase, apply
 [`20261015000000_expand_daily_grid.sql`](supabase/migrations/20261015000000_expand_daily_grid.sql)
 once through your migration workflow or Supabase SQL Editor. Close older app
@@ -183,7 +194,7 @@ node --test web-frontend/js/*.test.cjs
 
 Requires Node.js 18 or newer; no npm dependencies are needed. Tests supply explicit
 dates and times to the calculation helpers without a browser or a mocked clock.
-Coverage includes local-date parsing, elapsed intervals, completion boundaries,
+Coverage includes local-date formatting, clock-based slots, activity boundaries,
 and current-time line positions in Eastern, UTC, and India timezones. Session
 tests cover daily rollover, local archival, same-day reuse, and active-write guards.
 Additional tests cover centering geometry, pause countdowns, resume behavior,

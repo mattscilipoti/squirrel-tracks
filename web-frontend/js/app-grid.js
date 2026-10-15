@@ -133,12 +133,10 @@ class GridTaskTracker {
     this.notes = session.notes || "";
 
     // Update form fields
-    const startTimeInput = document.getElementById("startTimeInput");
     const memoInput = document.getElementById("memoInput");
     const dateInput = document.getElementById("dateInput");
     const notesInput = document.getElementById("notesInput");
 
-    if (startTimeInput) startTimeInput.value = this.startTime;
     if (memoInput) memoInput.value = this.memo;
     if (dateInput) dateInput.value = this.date;
     if (notesInput) notesInput.value = this.notes;
@@ -149,7 +147,9 @@ class GridTaskTracker {
     sessionTasks.forEach((task) => {
       this.taskIdMap[task.name] = task.id;
     });
-    this.gridData = this.tasks.map(() => new Array(TimeCalculations.intervalCount).fill(false));
+    this.gridData = this.tasks.map(() =>
+      new Array(TimeCalculations.intervalCount).fill(false),
+    );
   }
 
   async loadSessionFromSupabase(session) {
@@ -165,7 +165,11 @@ class GridTaskTracker {
     intervals.forEach((interval) => {
       const taskIndex = taskIndexById.get(String(interval.task_id));
       const intervalIndex = Number(interval.interval_index);
-      if (taskIndex !== undefined && intervalIndex >= 0 && intervalIndex < TimeCalculations.intervalCount) {
+      if (
+        taskIndex !== undefined &&
+        intervalIndex >= 0 &&
+        intervalIndex < TimeCalculations.intervalCount
+      ) {
         this.gridData[taskIndex][intervalIndex] = true;
       }
     });
@@ -182,19 +186,26 @@ class GridTaskTracker {
     const container = document.querySelector(".grid-container");
     container.tabIndex = 0;
     container.setAttribute("aria-label", "Daily time grid");
-    container.addEventListener("scroll", () => {
-      if (
-        this.autoCenterScrollLeft !== null &&
-        Math.abs(container.scrollLeft - this.autoCenterScrollLeft) < 1
-      ) return;
-      this.autoCenterScrollLeft = null;
-      this.autoCenterPausedUntil = Date.now() + 120000;
-      this.updateAutoCenterStatus();
-      this.updateCurrentTimeLine(new Date(), false);
-    }, { passive: true });
-    document.getElementById("resumeAutoCenterBtn").addEventListener("click", () => {
-      this.resumeAutoCentering();
-    });
+    container.addEventListener(
+      "scroll",
+      () => {
+        if (
+          this.autoCenterScrollLeft !== null &&
+          Math.abs(container.scrollLeft - this.autoCenterScrollLeft) < 1
+        )
+          return;
+        this.autoCenterScrollLeft = null;
+        this.autoCenterPausedUntil = Date.now() + 120000;
+        this.updateAutoCenterStatus();
+        this.updateCurrentTimeLine(new Date(), false);
+      },
+      { passive: true },
+    );
+    document
+      .getElementById("resumeAutoCenterBtn")
+      .addEventListener("click", () => {
+        this.resumeAutoCentering();
+      });
 
     // Timer buttons
     document
@@ -208,12 +219,6 @@ class GridTaskTracker {
       ?.addEventListener("click", () => this.timerReset());
 
     // Header fields
-    document
-      .getElementById("startTimeInput")
-      ?.addEventListener("change", () => {
-        this.updateTimeCalculations();
-        this.saveToLocalStorage();
-      });
     document
       .getElementById("memoInput")
       ?.addEventListener("change", () => this.saveToLocalStorage());
@@ -355,7 +360,7 @@ class GridTaskTracker {
   }
 
   /**
-   * Calculate and display end time, elapsed time, and current interval
+  * Update activity summaries and the clock-based current slot
    */
   updateTimeCalculations() {
     const now = new Date();
@@ -368,13 +373,18 @@ class GridTaskTracker {
       }
     }
     this.updateCurrentTimeLine(now);
-    const startTimeInput = document.getElementById("startTimeInput")?.value;
-    const dateInput = document.getElementById("dateInput")?.value;
-    const result = TimeCalculations.sessionTime(now, startTimeInput, dateInput);
-    document.getElementById("endTimeDisplay").textContent = result.endTime;
-    document.getElementById("elapsedDisplay").textContent = result.elapsedText;
-    document.getElementById("currentIntervalDisplay").textContent =
-      result.intervalText;
+    this.updateActivitySummary();
+    document.getElementById("currentSlotDisplay").textContent =
+      `${TimeCalculations.currentSlot(now)} / ${TimeCalculations.intervalCount}`;
+  }
+
+  updateActivitySummary() {
+    const summary = TimeCalculations.activitySummary(this.gridData);
+    this.startTime = summary.firstActivity === "--" ? "" : summary.firstActivity;
+    document.getElementById("firstActivityDisplay").textContent = summary.firstActivity;
+    document.getElementById("lastActivityDisplay").textContent = summary.lastActivity;
+    document.getElementById("sessionSpanDisplay").textContent = summary.sessionSpan;
+    document.getElementById("trackedTimeDisplay").textContent = summary.trackedTime;
   }
 
   initializeGridHeader() {
@@ -415,7 +425,10 @@ class GridTaskTracker {
   }
 
   updateAutoCenterStatus(now = Date.now()) {
-    const seconds = TimeCalculations.autoCenterSeconds(this.autoCenterPausedUntil, now);
+    const seconds = TimeCalculations.autoCenterSeconds(
+      this.autoCenterPausedUntil,
+      now,
+    );
     document.getElementById("autoCenterStatus").hidden = seconds === 0;
     document.getElementById("autoCenterCountdown").textContent =
       `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -448,14 +461,24 @@ class GridTaskTracker {
     const columnRect = columns[intervalIndex].getBoundingClientRect();
     const bodyRect = body.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
-    const timeOffset = columnRect.left + columnRect.width * fraction - containerRect.left - container.clientLeft + container.scrollLeft;
+    const timeOffset =
+      columnRect.left +
+      columnRect.width * fraction -
+      containerRect.left -
+      container.clientLeft +
+      container.scrollLeft;
     line.style.left = `${timeOffset}px`;
     line.style.top = `${bodyRect.top - containerRect.top - container.clientTop + container.scrollTop}px`;
     line.style.height = `${bodyRect.height}px`;
     if (autoCenter && !this.updateAutoCenterStatus()) {
-      const stickyWidth = table.querySelector(".task-column").getBoundingClientRect().width;
+      const stickyWidth = table
+        .querySelector(".task-column")
+        .getBoundingClientRect().width;
       container.scrollLeft = TimeCalculations.centeredScrollLeft(
-        timeOffset, container.clientWidth, stickyWidth, container.scrollWidth,
+        timeOffset,
+        container.clientWidth,
+        stickyWidth,
+        container.scrollWidth,
       );
       this.autoCenterScrollLeft = container.scrollLeft;
     }
@@ -500,7 +523,11 @@ class GridTaskTracker {
       row.appendChild(taskCell);
 
       // One cell for each 15-minute interval of the day
-      for (let intervalIdx = 0; intervalIdx < TimeCalculations.intervalCount; intervalIdx++) {
+      for (
+        let intervalIdx = 0;
+        intervalIdx < TimeCalculations.intervalCount;
+        intervalIdx++
+      ) {
         const hourIdx = Math.floor(intervalIdx / 4);
 
         const cell = document.createElement("td");
@@ -595,7 +622,7 @@ class GridTaskTracker {
 
       await this.waitForPendingWrites();
 
-      this.startTime = document.getElementById("startTimeInput")?.value || "";
+      this.updateActivitySummary();
       this.memo = document.getElementById("memoInput")?.value || "";
       this.date = document.getElementById("dateInput")?.value || this.date;
       this.notes = document.getElementById("notesInput")?.value || "";
@@ -655,7 +682,11 @@ class GridTaskTracker {
       const desiredIntervals = new Map();
       this.tasks.forEach((taskName, taskIndex) => {
         const taskId = this.taskIdMap[taskName];
-        for (let intervalIndex = 0; intervalIndex < TimeCalculations.intervalCount; intervalIndex++) {
+        for (
+          let intervalIndex = 0;
+          intervalIndex < TimeCalculations.intervalCount;
+          intervalIndex++
+        ) {
           if (this.gridData[taskIndex]?.[intervalIndex]) {
             desiredIntervals.set(`${taskId}:${intervalIndex}`, {
               taskId,
@@ -784,7 +815,9 @@ class GridTaskTracker {
   clearGrid() {
     if (!confirm("Clear all interval assignments? (Tasks will remain)")) return;
 
-    this.gridData = this.tasks.map(() => new Array(TimeCalculations.intervalCount).fill(false));
+    this.gridData = this.tasks.map(() =>
+      new Array(TimeCalculations.intervalCount).fill(false),
+    );
     this.renderGrid();
     this.updateSummary();
   }
@@ -842,8 +875,7 @@ class GridTaskTracker {
    */
   exportCSV() {
     const date = document.getElementById("dateInput")?.value || this.date;
-    const startTime =
-      document.getElementById("startTimeInput")?.value || this.startTime;
+    const activity = TimeCalculations.activitySummary(this.gridData);
 
     let csv = "TASK,INTERVALS,MINUTES,TIME\n";
 
@@ -868,7 +900,10 @@ class GridTaskTracker {
     // Add metadata
     csv += `\n\nMETADATA\n`;
     csv += `Date,${date}\n`;
-    csv += `Start Time,${startTime}\n`;
+    csv += `First Activity,${activity.firstActivity}\n`;
+    csv += `Last Activity,${activity.lastActivity}\n`;
+    csv += `Session Span,${activity.sessionSpan}\n`;
+    csv += `Tracked Time,${activity.trackedTime}\n`;
     csv += `Memo,"${document.getElementById("memoInput")?.value || ""}"\n`;
 
     // Download
@@ -994,7 +1029,7 @@ class GridTaskTracker {
     this.memo = "";
     this.notes = "";
     this.date = today;
-    for (const field of ["startTimeInput", "memoInput", "notesInput"]) {
+    for (const field of ["memoInput", "notesInput"]) {
       document.getElementById(field).value = "";
     }
     document.getElementById("dateInput").value = today;
@@ -1007,7 +1042,7 @@ class GridTaskTracker {
    */
   saveToLocalStorage() {
     // Save form inputs
-    this.startTime = document.getElementById("startTimeInput")?.value || "";
+    this.updateActivitySummary();
     this.memo = document.getElementById("memoInput")?.value || "";
     this.date = document.getElementById("dateInput")?.value || this.date;
     this.notes = document.getElementById("notesInput")?.value || "";
@@ -1039,7 +1074,7 @@ class GridTaskTracker {
 
     try {
       // Save latest form values
-      this.startTime = document.getElementById("startTimeInput")?.value || "";
+      this.updateActivitySummary();
       this.memo = document.getElementById("memoInput")?.value || "";
       this.date = document.getElementById("dateInput")?.value || this.date;
       this.notes = document.getElementById("notesInput")?.value || "";
@@ -1070,7 +1105,9 @@ class GridTaskTracker {
       try {
         const state = JSON.parse(saved);
         this.tasks = state.tasks || [];
-        this.gridData = (state.gridData || []).map((row) => TimeCalculations.normalizeGridRow(row));
+        this.gridData = (state.gridData || []).map((row) =>
+          TimeCalculations.normalizeGridRow(row),
+        );
         this.sessionId = state.sessionId;
         this.startTime = state.startTime || "";
         this.memo = state.memo || "";
@@ -1078,12 +1115,10 @@ class GridTaskTracker {
         this.notes = state.notes || "";
 
         // Restore form fields
-        const startTimeInput = document.getElementById("startTimeInput");
         const memoInput = document.getElementById("memoInput");
         const dateInput = document.getElementById("dateInput");
         const notesInput = document.getElementById("notesInput");
 
-        if (startTimeInput) startTimeInput.value = this.startTime;
         if (memoInput) memoInput.value = this.memo;
         if (dateInput) dateInput.value = this.date;
         if (notesInput) notesInput.value = this.notes;
@@ -1091,7 +1126,9 @@ class GridTaskTracker {
         // Initialize grid data for tasks if not present
         if (this.gridData.length < this.tasks.length) {
           for (let i = this.gridData.length; i < this.tasks.length; i++) {
-            this.gridData.push(new Array(TimeCalculations.intervalCount).fill(false));
+            this.gridData.push(
+              new Array(TimeCalculations.intervalCount).fill(false),
+            );
           }
         }
       } catch (e) {
