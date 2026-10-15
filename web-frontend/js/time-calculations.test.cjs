@@ -2,6 +2,32 @@ const assert = require("node:assert/strict");
 const { describe, test } = require("node:test");
 const TimeCalculations = require("./time-calculations.js");
 
+test("reminder repeats at the boundary rather than stopping at zero", () => {
+  assert.deepEqual(TimeCalculations.reminderTick(899001, 900000, 900), {
+    nextReminderAt: 900000,
+    timeRemaining: 1,
+    elapsedIntervals: 0,
+  });
+  assert.deepEqual(TimeCalculations.reminderTick(900000, 900000, 900), {
+    nextReminderAt: 1800000,
+    timeRemaining: 900,
+    elapsedIntervals: 1,
+  });
+});
+
+test("reminder uses deadlines without drift and skips missed intervals", () => {
+  assert.deepEqual(TimeCalculations.reminderTick(2705000, 900000, 900), {
+    nextReminderAt: 3600000,
+    timeRemaining: 895,
+    elapsedIntervals: 3,
+  });
+  assert.deepEqual(TimeCalculations.reminderTick(60000, 60000, 60), {
+    nextReminderAt: 120000,
+    timeRemaining: 60,
+    elapsedIntervals: 1,
+  });
+});
+
 test("empty grids have no activity summaries", () => {
   for (const grid of [[], [new Array(96).fill(false)]]) {
     assert.deepEqual(TimeCalculations.activitySummary(grid), {

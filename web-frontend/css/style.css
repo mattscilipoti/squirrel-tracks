@@ -166,6 +166,12 @@ header .subtitle {
   min-width: 20px;
 }
 
+.audio-enable-button {
+  min-height: 36px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 .form-input-small {
   padding: 4px 6px;
   border: 1px solid #ccc;
@@ -195,29 +201,64 @@ header a:hover {
 
 /* Timer Widget */
 .timer-widget {
-  position: fixed;
-  top: 20px;
-  right: 20px;
-  background: white;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 10px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  z-index: 100;
-  min-width: 130px;
-  text-align: center;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 10px;
+  text-align: left;
+}
+
+.reminder-settings {
+  display: contents;
+  font-size: 0.8rem;
+}
+
+.reminder-settings label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+#reminderMinutesInput {
+  width: 50px;
+  padding: 3px;
+}
+
+.bell-volume-control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+#bellVolumeInput {
+  width: 100px;
+}
+
+#bellVolumeValue {
+  width: 4ch;
+  font-variant-numeric: tabular-nums;
 }
 
 .timer-display-small {
-  text-align: center;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.reminder-label {
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .time-small {
-  font-size: 1.5rem;
+  font-size: 1rem;
   font-weight: bold;
   font-family: "Courier New", monospace;
   color: #333;
-  margin-bottom: 6px;
+  min-width: 5ch;
+  font-variant-numeric: tabular-nums;
 }
 
 .controls-small {
@@ -603,7 +644,7 @@ header a:hover {
 /* Notes & Summary Section */
 .notes-section {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
   border: 1px solid #ccc;
   padding: 15px;
@@ -621,11 +662,13 @@ header a:hover {
 .notes-left {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .notes-right {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .notes-textarea {
@@ -657,14 +700,20 @@ header a:hover {
   padding: 6px 8px;
   border-left: 2px solid #007bff;
   font-size: 0.75rem;
+  overflow-wrap: anywhere;
 }
 
 .summary-item .task-title {
+  display: inline;
   font-weight: 600;
-  margin-bottom: 2px;
+}
+
+.summary-item .task-title::after {
+  content: ": ";
 }
 
 .summary-item .task-stats {
+  display: inline;
   font-size: 0.7rem;
   color: #666;
 }
@@ -702,13 +751,6 @@ footer a:hover {
 @media (max-width: 900px) {
   .notes-section {
     grid-template-columns: 1fr;
-  }
-
-  .timer-widget {
-    position: relative;
-    top: auto;
-    right: auto;
-    margin-bottom: 15px;
   }
 
   .header-form {

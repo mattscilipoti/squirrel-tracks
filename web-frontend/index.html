@@ -65,6 +65,23 @@
         </div>
         <div class="header-form">
           <label>
+            DATE:
+            <span
+              class="form-value"
+              id="dateDisplay"
+              title="Current local session date"
+              >--</span
+            >
+          </label>
+          <button
+            id="enableBellBtn"
+            class="btn btn-primary audio-enable-button"
+            type="button"
+            title="Browser audio is not active yet. Click to enable reminder sound and hear a preview at your selected volume. The Bell checkbox controls mute; check device volume if sound is still inaudible."
+          >
+            Enable bell audio
+          </button>
+          <label>
             TASKS: <span class="form-value" id="tasksValue">0</span>
           </label>
           <label>
@@ -97,9 +114,6 @@
               style="max-width: 200px"
             />
           </label>
-          <label>
-            DATE: <input type="date" id="dateInput" class="form-input-small" />
-          </label>
         </div>
         <p class="help-text">
           Based on
@@ -112,20 +126,6 @@
       </header>
 
       <main>
-        <!-- Timer Floating Widget -->
-        <div class="timer-widget">
-          <div class="timer-display-small">
-            <div class="time-small" id="timerDisplay">15:00</div>
-            <div class="controls-small">
-              <button id="startBtn" class="btn-small btn-primary">▶</button>
-              <button id="pauseBtn" class="btn-small btn-secondary" disabled>
-                ⏸
-              </button>
-              <button id="resetBtn" class="btn-small btn-tertiary">↻</button>
-            </div>
-          </div>
-        </div>
-
         <!-- Grid Controls - Simplified -->
         <section class="grid-controls">
           <div class="task-input-wrapper">
@@ -135,20 +135,36 @@
               placeholder="Enter task name..."
               class="input-field-small"
             />
-            <button id="addTaskBtn" class="btn btn-primary btn-small"
-              title="Add a task row to today's session.">
+            <button
+              id="addTaskBtn"
+              class="btn btn-primary btn-small"
+              title="Add a task row to today's session."
+            >
               Add
             </button>
           </div>
           <div class="spacer"></div>
-          <button id="clearGridBtn" class="btn btn-tertiary"
-            title="Clear this session's bubbles after confirmation; keep tasks and notes. Use Sync &amp; Reload to save the cleared grid to Supabase.">Clear Grid</button>
-          <button id="syncReloadBtn" class="btn btn-secondary"
-            title="Save this grid, tasks, and notes to Supabase, then reload the saved session. Requires a Supabase connection.">
+          <button
+            id="clearGridBtn"
+            class="btn btn-tertiary"
+            title="Clear this session's bubbles after confirmation; keep tasks and notes. Use Sync &amp; Reload to save the cleared grid to Supabase."
+          >
+            Clear Grid
+          </button>
+          <button
+            id="syncReloadBtn"
+            class="btn btn-secondary"
+            title="Save this grid, tasks, and notes to Supabase, then reload the saved session. Requires a Supabase connection."
+          >
             Sync &amp; Reload
           </button>
-          <button id="exportBtn" class="btn btn-secondary"
-            title="Download this session's task totals and activity summaries as a CSV file.">Export CSV</button>
+          <button
+            id="exportBtn"
+            class="btn btn-secondary"
+            title="Download this session's task totals and activity summaries as a CSV file."
+          >
+            Export CSV
+          </button>
         </section>
 
         <!-- Time Grid -->
@@ -192,6 +208,63 @@
               class="notes-textarea"
               placeholder="Keep other notes here"
             ></textarea>
+            <div
+              class="timer-widget"
+              role="group"
+              aria-label="Repeating reminder"
+            >
+              <div class="timer-display-small">
+                <div
+                  class="time-small"
+                  id="timerDisplay"
+                  role="timer"
+                  aria-label="Time until next reminder"
+                >
+                  15:00
+                </div>
+                <div class="reminder-settings">
+                  <label
+                    >Reminder bell every
+                    <input
+                      id="reminderMinutesInput"
+                      type="number"
+                      min="1"
+                      max="120"
+                      step="1"
+                      value="15"
+                      aria-label="Reminder interval in minutes"
+                      title="Reminder interval, from 1 to 120 minutes"
+                    />
+                    min</label
+                  >
+                  <label
+                    ><input
+                      id="bellEnabledInput"
+                      type="checkbox"
+                      checked
+                      title="Play a soft bell at each reminder"
+                    />
+                    Bell</label
+                  >
+                </div>
+                <div class="bell-volume-control">
+                  <label for="bellVolumeInput">Volume</label>
+                  <input
+                    id="bellVolumeInput"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value="100"
+                    aria-label="Bell volume"
+                    title="Bell volume; muting preserves this setting"
+                  />
+                  <output id="bellVolumeValue" for="bellVolumeInput"
+                    >100%</output
+                  >
+                </div>
+              </div>
+            </div>
           </div>
           <div class="notes-right">
             <h3>SUMMARY</h3>

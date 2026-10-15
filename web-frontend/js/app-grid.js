@@ -26,7 +26,7 @@ class GridTaskTracker {
     this.autoCenterScrollLeft = null;
 
     this.timerState = {
-      isRunning: false,
+      isRunning: true,
       timeRemaining: 15 * 60, // 15 minutes in seconds
       totalTime: 15 * 60,
       currentInterval: 0,
@@ -35,7 +35,8 @@ class GridTaskTracker {
     this.initializeUI();
     this.loadFromLocalStorage();
     this.rolloverDailySession();
-    document.getElementById("dateInput").value = this.date;
+    this.initializeReminder();
+    document.getElementById("dateDisplay").textContent = this.date;
     if (hasSupabaseConfig()) {
       this.sessionInitialization = this.initializeSession();
     }
@@ -48,9 +49,18 @@ class GridTaskTracker {
       this.updateCurrentTimeLine(),
     );
     this.currentTimeObserver.observe(document.getElementById("timeGrid"));
-    document.addEventListener("visibilitychange", () =>
-      this.updateTimeCalculations(),
-    );
+    document.addEventListener("visibilitychange", () => {
+      this.updateTimeCalculations();
+      this.timerTick();
+    });
+    const unlockBellAudio = (event) => {
+      if (!event.target.closest?.("#enableBellBtn")) this.enableBellAudio();
+    };
+    document.addEventListener("pointerdown", unlockBellAudio, {
+      passive: true,
+    });
+    document.addEventListener("keydown", unlockBellAudio);
+    this.reminderIntervalHandle = setInterval(() => this.timerTick(), 1000);
 
     // Update time calculations every minute
     setInterval(() => this.updateTimeCalculations(), 60000);
@@ -134,11 +144,11 @@ class GridTaskTracker {
 
     // Update form fields
     const memoInput = document.getElementById("memoInput");
-    const dateInput = document.getElementById("dateInput");
+    const dateDisplay = document.getElementById("dateDisplay");
     const notesInput = document.getElementById("notesInput");
 
     if (memoInput) memoInput.value = this.memo;
-    if (dateInput) dateInput.value = this.date;
+    if (dateDisplay) dateDisplay.textContent = this.date;
     if (notesInput) notesInput.value = this.notes;
 
     const sessionTasks = session.tasks || [];
@@ -207,25 +217,44 @@ class GridTaskTracker {
         this.resumeAutoCentering();
       });
 
-    // Timer buttons
     document
-      .getElementById("startBtn")
-      ?.addEventListener("click", () => this.timerStart());
+      .getElementById("reminderMinutesInput")
+      .addEventListener("change", (event) => {
+        const minutes = Number(event.target.value);
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 120) {
+          event.target.value = this.timerState.totalTime / 60;
+          return;
+        }
+        this.timerState.totalTime = minutes * 60;
+        this.nextReminderAt = Date.now() + this.timerState.totalTime * 1000;
+        this.timerTick();
+        this.saveReminderSettings();
+      });
     document
-      .getElementById("pauseBtn")
-      ?.addEventListener("click", () => this.timerPause());
+      .getElementById("bellEnabledInput")
+      .addEventListener("change", (event) => {
+        this.bellEnabled = event.target.checked;
+        this.updateBellVolume();
+        this.updateBellControl();
+        this.saveReminderSettings();
+        if (this.bellEnabled) this.enableBellAudio();
+      });
     document
-      .getElementById("resetBtn")
-      ?.addEventListener("click", () => this.timerReset());
+      .getElementById("bellVolumeInput")
+      .addEventListener("input", (event) => {
+        this.setBellVolume(Number(event.target.value));
+      });
+    document
+      .getElementById("enableBellBtn")
+      .addEventListener("click", async () => {
+        await this.enableBellAudio();
+        this.playReminderBell();
+      });
 
     // Header fields
     document
       .getElementById("memoInput")
       ?.addEventListener("change", () => this.saveToLocalStorage());
-    document.getElementById("dateInput")?.addEventListener("change", () => {
-      this.updateTimeCalculations();
-      this.saveToLocalStorage();
-    });
     document
       .getElementById("notesInput")
       ?.addEventListener("change", () => this.saveToLocalStorage());
@@ -623,7 +652,6 @@ class GridTaskTracker {
 
       this.updateActivitySummary();
       this.memo = document.getElementById("memoInput")?.value || "";
-      this.date = document.getElementById("dateInput")?.value || this.date;
       this.notes = document.getElementById("notesInput")?.value || "";
       await this.db.updateSession(this.sessionId, {
         start_time: this.startTime || null,
@@ -834,7 +862,7 @@ class GridTaskTracker {
    * Export grid as CSV
    */
   exportCSV() {
-    const date = document.getElementById("dateInput")?.value || this.date;
+    const date = this.date;
     const activity = TimeCalculations.activitySummary(this.gridData);
 
     let csv = "TASK,INTERVALS,MINUTES,TIME\n";
@@ -879,60 +907,143 @@ class GridTaskTracker {
     URL.revokeObjectURL(url);
   }
 
-  /**
-   * Timer: Start
-   */
-  timerStart() {
-    if (this.timerState.isRunning) return;
+  initializeReminder(now = Date.now()) {
+    let settings = {};
+    try {
+      settings =
+        JSON.parse(localStorage.getItem("ettReminderSettings") || "{}") || {};
+    } catch (error) {
+      console.warn("Could not load reminder settings:", error);
+    }
+    const minutes = Number(settings.minutes);
+    this.timerState.totalTime =
+      Number.isInteger(minutes) && minutes >= 1 && minutes <= 120
+        ? minutes * 60
+        : 900;
+    this.bellEnabled = settings.bellEnabled !== false;
+    this.bellVolume =
+      Number.isFinite(settings.volume) &&
+      settings.volume >= 0 &&
+      settings.volume <= 1
+        ? settings.volume
+        : 1;
+    this.nextReminderAt =
+      Number.isFinite(settings.nextReminderAt) &&
+      settings.nextReminderAt <= now + this.timerState.totalTime * 1000
+        ? settings.nextReminderAt
+        : now + this.timerState.totalTime * 1000;
+    document.getElementById("reminderMinutesInput").value =
+      this.timerState.totalTime / 60;
+    document.getElementById("bellEnabledInput").checked = this.bellEnabled;
+    this.updateBellVolume();
+    this.timerTick(now, false);
+    this.updateBellControl();
+    this.saveReminderSettings();
+  }
 
+  saveReminderSettings() {
+    localStorage.setItem(
+      "ettReminderSettings",
+      JSON.stringify({
+        minutes: this.timerState.totalTime / 60,
+        bellEnabled: this.bellEnabled,
+        volume: this.bellVolume,
+        nextReminderAt: this.nextReminderAt,
+      }),
+    );
+  }
+
+  timerTick(now = Date.now(), ring = true) {
+    const previousDeadline = this.nextReminderAt;
+    const result = TimeCalculations.reminderTick(
+      now,
+      previousDeadline,
+      this.timerState.totalTime,
+    );
+    this.nextReminderAt = result.nextReminderAt;
     this.timerState.isRunning = true;
-    document.getElementById("startBtn").disabled = true;
-    document.getElementById("pauseBtn").disabled = false;
-
-    const interval = setInterval(() => {
-      this.timerState.timeRemaining--;
-      this.updateTimerDisplay();
-
-      if (this.timerState.timeRemaining <= 0) {
-        clearInterval(interval);
-        this.timerState.isRunning = false;
-        this.timerState.timeRemaining = 0;
-        this.timerState.currentInterval++;
-        alert("⏰ Time interval complete! Move to next task.");
-        this.updateTimerDisplay();
-        document.getElementById("startBtn").disabled = false;
-        document.getElementById("pauseBtn").disabled = true;
-      }
-    }, 1000);
-
-    this.timerState.intervalHandle = interval;
-  }
-
-  /**
-   * Timer: Pause
-   */
-  timerPause() {
-    if (this.timerState.intervalHandle) {
-      clearInterval(this.timerState.intervalHandle);
-    }
-    this.timerState.isRunning = false;
-    document.getElementById("startBtn").disabled = false;
-    document.getElementById("pauseBtn").disabled = true;
-  }
-
-  /**
-   * Timer: Reset
-   */
-  timerReset() {
-    if (this.timerState.intervalHandle) {
-      clearInterval(this.timerState.intervalHandle);
-    }
-    this.timerState.isRunning = false;
-    this.timerState.timeRemaining = this.timerState.totalTime;
-    this.timerState.currentInterval = 0;
+    this.timerState.timeRemaining = result.timeRemaining;
     this.updateTimerDisplay();
-    document.getElementById("startBtn").disabled = false;
-    document.getElementById("pauseBtn").disabled = true;
+    if (result.elapsedIntervals) {
+      if (this.bellEnabled && ring && now - previousDeadline < 10000)
+        this.playReminderBell();
+      this.saveReminderSettings();
+    }
+  }
+
+  updateBellControl() {
+    document.getElementById("enableBellBtn").hidden =
+      !this.bellEnabled || this.audioContext?.state === "running";
+  }
+
+  setBellVolume(percent) {
+    if (!Number.isFinite(percent)) return;
+    this.bellVolume = Math.max(0, Math.min(100, percent)) / 100;
+    this.updateBellVolume();
+    this.saveReminderSettings();
+  }
+
+  updateBellVolume() {
+    const percent = Math.round(this.bellVolume * 100);
+    document.getElementById("bellVolumeInput").value = percent;
+    document.getElementById("bellVolumeValue").textContent = `${percent}%`;
+    if (this.bellOutput) {
+      this.bellOutput.gain.setTargetAtTime(
+        this.bellEnabled ? this.bellVolume : 0,
+        this.audioContext.currentTime,
+        0.02,
+      );
+    }
+  }
+
+  async enableBellAudio() {
+    if (!this.bellEnabled) return;
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      if (!this.audioContext || this.audioContext.state === "closed") {
+        this.audioContext = new AudioContext();
+        this.bellOutput = this.audioContext.createGain();
+        this.bellOutput.gain.setValueAtTime(
+          this.bellEnabled ? this.bellVolume : 0,
+          this.audioContext.currentTime,
+        );
+        this.bellOutput.connect(this.audioContext.destination);
+        this.audioContext.onstatechange = () => this.updateBellControl();
+      }
+      if (this.audioContext.state !== "running")
+        await this.audioContext.resume();
+    } catch (error) {
+      console.warn("Bell audio is unavailable:", error);
+    }
+    this.updateBellControl();
+  }
+
+  playReminderBell() {
+    if (!this.bellEnabled || this.audioContext?.state !== "running") return;
+    const context = this.audioContext;
+    const start = context.currentTime;
+    for (const [frequency, volume, decay] of [
+      [440, 0.04, 4.5],
+      [881, 0.012, 3.2],
+      [1323, 0.005, 2.2],
+    ]) {
+      const oscillator = context.createOscillator();
+      const envelope = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequency;
+      envelope.gain.setValueAtTime(0.0001, start);
+      envelope.gain.exponentialRampToValueAtTime(volume, start + 0.03);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, start + decay);
+      oscillator.connect(envelope);
+      envelope.connect(this.bellOutput);
+      oscillator.onended = () => {
+        oscillator.disconnect();
+        envelope.disconnect();
+      };
+      oscillator.start(start);
+      oscillator.stop(start + decay);
+    }
   }
 
   /**
@@ -964,8 +1075,6 @@ class GridTaskTracker {
     history[`${this.date}:${this.sessionId || "local"}`] = previousState;
     localStorage.setItem("ettGridHistory", JSON.stringify(history));
 
-    this.timerReset();
-    this.timerState.currentInterval = 0;
     this.tasks = [];
     this.taskIdMap = {};
     this.gridData = [];
@@ -978,7 +1087,7 @@ class GridTaskTracker {
     for (const field of ["memoInput", "notesInput"]) {
       document.getElementById(field).value = "";
     }
-    document.getElementById("dateInput").value = today;
+    document.getElementById("dateDisplay").textContent = today;
     this.saveToLocalStorage();
     return true;
   }
@@ -990,7 +1099,6 @@ class GridTaskTracker {
     // Save form inputs
     this.updateActivitySummary();
     this.memo = document.getElementById("memoInput")?.value || "";
-    this.date = document.getElementById("dateInput")?.value || this.date;
     this.notes = document.getElementById("notesInput")?.value || "";
 
     const state = {
@@ -1022,7 +1130,6 @@ class GridTaskTracker {
       // Save latest form values
       this.updateActivitySummary();
       this.memo = document.getElementById("memoInput")?.value || "";
-      this.date = document.getElementById("dateInput")?.value || this.date;
       this.notes = document.getElementById("notesInput")?.value || "";
 
       const sessionData = {
@@ -1062,11 +1169,11 @@ class GridTaskTracker {
 
         // Restore form fields
         const memoInput = document.getElementById("memoInput");
-        const dateInput = document.getElementById("dateInput");
+        const dateDisplay = document.getElementById("dateDisplay");
         const notesInput = document.getElementById("notesInput");
 
         if (memoInput) memoInput.value = this.memo;
-        if (dateInput) dateInput.value = this.date;
+        if (dateDisplay) dateDisplay.textContent = this.date;
         if (notesInput) notesInput.value = this.notes;
 
         // Initialize grid data for tasks if not present
