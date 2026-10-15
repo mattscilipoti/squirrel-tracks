@@ -242,22 +242,16 @@ class GridTaskTracker {
 
     // Grid actions
     document
-      .getElementById("autoFillBtn")
-      .addEventListener("click", () => this.autoFillHour1());
-    document
       .getElementById("clearGridBtn")
       .addEventListener("click", () => this.clearGrid());
     document
       .getElementById("syncReloadBtn")
       .addEventListener("click", () => this.syncAndReloadFromSupabase());
 
-    // Export/Clear
+    // Export
     document
       .getElementById("exportBtn")
       .addEventListener("click", () => this.exportCSV());
-    document
-      .getElementById("clearBtn")
-      .addEventListener("click", () => this.clearAll());
   }
 
   bindEvents() {
@@ -360,7 +354,7 @@ class GridTaskTracker {
   }
 
   /**
-  * Update activity summaries and the clock-based current slot
+   * Update activity summaries and the clock-based current slot
    */
   updateTimeCalculations() {
     const now = new Date();
@@ -380,11 +374,16 @@ class GridTaskTracker {
 
   updateActivitySummary() {
     const summary = TimeCalculations.activitySummary(this.gridData);
-    this.startTime = summary.firstActivity === "--" ? "" : summary.firstActivity;
-    document.getElementById("firstActivityDisplay").textContent = summary.firstActivity;
-    document.getElementById("lastActivityDisplay").textContent = summary.lastActivity;
-    document.getElementById("sessionSpanDisplay").textContent = summary.sessionSpan;
-    document.getElementById("trackedTimeDisplay").textContent = summary.trackedTime;
+    this.startTime =
+      summary.firstActivity === "--" ? "" : summary.firstActivity;
+    document.getElementById("firstActivityDisplay").textContent =
+      summary.firstActivity;
+    document.getElementById("lastActivityDisplay").textContent =
+      summary.lastActivity;
+    document.getElementById("sessionSpanDisplay").textContent =
+      summary.sessionSpan;
+    document.getElementById("trackedTimeDisplay").textContent =
+      summary.trackedTime;
   }
 
   initializeGridHeader() {
@@ -771,45 +770,6 @@ class GridTaskTracker {
   }
 
   /**
-   * Auto-fill: Copy Hour 1 (intervals 0-3) pattern to all other hours
-   */
-  autoFillHour1() {
-    const hour1Pattern = [
-      this.gridData.map((row) => row[0]),
-      this.gridData.map((row) => row[1]),
-      this.gridData.map((row) => row[2]),
-      this.gridData.map((row) => row[3]),
-    ];
-
-    // Check if Hour 1 has any data
-    const hasData = hour1Pattern.some((interval) => interval.some((v) => v));
-
-    if (!hasData) {
-      alert(
-        "Hour 1 is empty. Fill in at least one task interval in Hour 1 first.",
-      );
-      return;
-    }
-
-    // Apply pattern to remaining 14 hours
-    for (let hour = 1; hour < 24; hour++) {
-      for (let intervalInHour = 0; intervalInHour < 4; intervalInHour++) {
-        const sourceIntervalIdx = intervalInHour;
-        const targetIntervalIdx = hour * 4 + intervalInHour;
-
-        for (let taskIdx = 0; taskIdx < this.tasks.length; taskIdx++) {
-          this.gridData[taskIdx][targetIntervalIdx] =
-            this.gridData[taskIdx][sourceIntervalIdx];
-        }
-      }
-    }
-
-    this.renderGrid();
-    this.updateSummary();
-    alert("✅ Pattern from Hour 1 has been applied to all remaining hours!");
-  }
-
-  /**
    * Clear all grid data (but keep tasks)
    */
   clearGrid() {
@@ -917,20 +877,6 @@ class GridTaskTracker {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }
-
-  /**
-   * Clear all tasks and grid
-   */
-  clearAll() {
-    if (!confirm("This will delete all tasks and grid assignments. Continue?"))
-      return;
-
-    this.tasks = [];
-    this.gridData = [];
-    this.renderGrid();
-    this.updateSummary();
-    this.updateTaskCount();
   }
 
   /**

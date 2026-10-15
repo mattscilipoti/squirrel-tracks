@@ -34,8 +34,11 @@ const TimeCalculations = {
     }
     if (!filledSlots.length) {
       return {
-        firstActivity: "--", lastActivity: "--", sessionSpan: "--",
-        trackedTime: "--", trackedMinutes: 0,
+        firstActivity: "--",
+        lastActivity: "--",
+        sessionSpan: "--",
+        trackedTime: "--",
+        trackedMinutes: 0,
       };
     }
 
@@ -43,7 +46,8 @@ const TimeCalculations = {
     const lastMinute = (filledSlots[filledSlots.length - 1] + 1) * 15;
     const clockTime = (minutes) =>
       `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-    const duration = (minutes) => `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+    const duration = (minutes) =>
+      `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
     const trackedMinutes = filledSlots.length * 15;
     return {
       firstActivity: clockTime(firstMinute),

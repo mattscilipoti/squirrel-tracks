@@ -5,8 +5,11 @@ const TimeCalculations = require("./time-calculations.js");
 test("empty grids have no activity summaries", () => {
   for (const grid of [[], [new Array(96).fill(false)]]) {
     assert.deepEqual(TimeCalculations.activitySummary(grid), {
-      firstActivity: "--", lastActivity: "--", sessionSpan: "--",
-      trackedTime: "--", trackedMinutes: 0,
+      firstActivity: "--",
+      lastActivity: "--",
+      sessionSpan: "--",
+      trackedTime: "--",
+      trackedMinutes: 0,
     });
   }
 });
@@ -19,8 +22,11 @@ test("activity span includes gaps while tracked time deduplicates overlapping ta
   second[36] = true;
   const original = JSON.stringify([first, second]);
   assert.deepEqual(TimeCalculations.activitySummary([first, second]), {
-    firstActivity: "09:00", lastActivity: "10:15", sessionSpan: "1h 15m",
-    trackedTime: "0h 30m", trackedMinutes: 30,
+    firstActivity: "09:00",
+    lastActivity: "10:15",
+    sessionSpan: "1h 15m",
+    trackedTime: "0h 30m",
+    trackedMinutes: 30,
   });
   assert.equal(JSON.stringify([first, second]), original);
 });
@@ -29,23 +35,41 @@ test("single final bubble ends at 24:00 and removing it clears summaries", () =>
   const row = new Array(96).fill(false);
   row[95] = true;
   assert.deepEqual(TimeCalculations.activitySummary([row]), {
-    firstActivity: "23:45", lastActivity: "24:00", sessionSpan: "0h 15m",
-    trackedTime: "0h 15m", trackedMinutes: 15,
+    firstActivity: "23:45",
+    lastActivity: "24:00",
+    sessionSpan: "0h 15m",
+    trackedTime: "0h 15m",
+    trackedMinutes: 15,
   });
   row[95] = false;
   assert.equal(TimeCalculations.activitySummary([row]).firstActivity, "--");
 });
 
 test("a filled day spans and tracks 24 hours", () => {
-  assert.deepEqual(TimeCalculations.activitySummary([new Array(96).fill(true)]), {
-    firstActivity: "00:00", lastActivity: "24:00", sessionSpan: "24h 0m",
-    trackedTime: "24h 0m", trackedMinutes: 1440,
-  });
+  assert.deepEqual(
+    TimeCalculations.activitySummary([new Array(96).fill(true)]),
+    {
+      firstActivity: "00:00",
+      lastActivity: "24:00",
+      sessionSpan: "24h 0m",
+      trackedTime: "24h 0m",
+      trackedMinutes: 1440,
+    },
+  );
 });
 
 test("current slot follows local clock quarter-hours independently of activity", () => {
-  for (const [hour, minute, slot] of [[0, 0, 1], [0, 14, 1], [0, 15, 2], [13, 0, 53], [23, 59, 96]]) {
-    assert.equal(TimeCalculations.currentSlot(new Date(2026, 9, 15, hour, minute)), slot);
+  for (const [hour, minute, slot] of [
+    [0, 0, 1],
+    [0, 14, 1],
+    [0, 15, 2],
+    [13, 0, 53],
+    [23, 59, 96],
+  ]) {
+    assert.equal(
+      TimeCalculations.currentSlot(new Date(2026, 9, 15, hour, minute)),
+      slot,
+    );
   }
 });
 
