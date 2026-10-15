@@ -148,6 +148,12 @@
         <!-- Time Grid -->
         <section class="grid-section">
           <div class="grid-container">
+            <div
+              id="currentTimeLine"
+              class="current-time-line"
+              aria-hidden="true"
+              hidden
+            ></div>
             <table class="time-grid" id="timeGrid">
               <thead>
                 <tr class="hour-header">
@@ -268,6 +274,7 @@
     </div>
 
     <script src="js/supabase-client.js"></script>
+    <script src="js/time-calculations.js"></script>
     <script src="js/app-grid.js"></script>
     <script>
       // Setup modal for Supabase credentials
