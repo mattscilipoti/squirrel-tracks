@@ -99,6 +99,15 @@ class SupabaseClient {
     return result?.[0] || null;
   }
 
+  async getSessionsForDate(date) {
+    const params = new URLSearchParams({
+      date: `eq.${date}`,
+      select: "*,tasks(*),intervals(id)",
+      order: "id.desc",
+    });
+    return this.request("GET", `/sessions?${params}`);
+  }
+
   async updateSession(sessionId, data) {
     return this.request("PATCH", `/sessions?id=eq.${sessionId}`, data);
   }

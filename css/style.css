@@ -689,37 +689,55 @@ header a:hover {
 
 .summary-content {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  overflow-y: auto;
+  overflow: auto;
 }
 
-.summary-item {
-  background-color: #f0f0f0;
-  padding: 6px 8px;
-  border-left: 2px solid #007bff;
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
   font-size: 0.75rem;
+}
+
+.summary-table th,
+.summary-table td {
+  padding: 5px 6px;
+  border-bottom: 1px solid #ddd;
+  text-align: right;
+  vertical-align: top;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-table th:first-child {
+  text-align: left;
   overflow-wrap: anywhere;
 }
 
-.summary-item .task-title {
-  display: inline;
-  font-weight: 600;
+.summary-table th:nth-child(2) {
+  width: 5rem;
 }
 
-.summary-item .task-title::after {
-  content: ": ";
+.summary-table th:nth-child(3) {
+  width: 6rem;
 }
 
-.summary-item .task-stats {
-  display: inline;
-  font-size: 0.7rem;
-  color: #666;
+.summary-table tbody th {
+  font-weight: normal;
 }
 
-.summary-item.empty {
-  color: #999;
+.summary-table td:not([colspan]) {
+  white-space: nowrap;
+}
+
+.summary-table .summary-totals th,
+.summary-table .summary-totals td {
+  font-weight: 700;
+  background-color: #eee;
+  border-bottom: 2px solid #bbb;
+}
+
+.summary-table .summary-empty {
+  color: #777;
   font-style: italic;
   text-align: center;
 }

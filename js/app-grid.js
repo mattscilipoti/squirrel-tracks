@@ -43,6 +43,7 @@ class GridTaskTracker {
     this.renderGrid();
     this.bindEvents();
     this.updateTaskCount();
+    this.updateSummary();
     this.updateTimeCalculations();
 
     this.currentTimeObserver = new ResizeObserver(() =>
@@ -87,19 +88,28 @@ class GridTaskTracker {
   }
 
   async loadOrCreateSession() {
-    // Check if we have a saved session ID
-    if (this.sessionId) {
-      try {
-        const session = await this.db.getSession(this.sessionId);
-        if (session && session.date === this.date) {
-          console.log("Session loaded from Supabase:", this.sessionId);
-          await this.loadSessionFromSupabase(session);
+    try {
+      const sessions = await this.db.getSessionsForDate(this.date);
+      const session = this.selectCloudSession(sessions);
+      if (session) {
+        if (
+          this.tasks.length &&
+          (String(session.id) !== String(this.sessionId) ||
+            !session.tasks?.length)
+        ) {
+          console.warn(
+            "Keeping local tasks; use Refresh from DB to confirm replacing them with the saved daily session.",
+          );
           return;
         }
-        this.sessionId = null;
-      } catch (error) {
-        console.warn("Failed to load session, creating new one:", error);
+        await this.loadSessionFromSupabase(session);
+        console.log("Session loaded from Supabase:", session.id);
+        return;
       }
+      this.sessionId = null;
+    } catch (error) {
+      console.warn("Failed to load session; keeping local data:", error);
+      return;
     }
 
     // Create new session
@@ -123,6 +133,20 @@ class GridTaskTracker {
         `Failed to create session: ${message}. Check the database permissions or enter different project credentials.`,
       );
     }
+  }
+
+  selectCloudSession(sessions) {
+    const populated = (session) =>
+      session.tasks?.length || session.intervals?.length;
+    const current = sessions.find(
+      (session) => String(session.id) === String(this.sessionId),
+    );
+    return (
+      (current && populated(current) ? current : null) ||
+      sessions.find(populated) ||
+      current ||
+      sessions[0]
+    );
   }
 
   /**
@@ -163,8 +187,8 @@ class GridTaskTracker {
   }
 
   async loadSessionFromSupabase(session) {
+    const intervals = await this.db.getSessionIntervals(session.id);
     this.restoreSessionData(session);
-    const intervals = await this.db.getSessionIntervals(this.sessionId);
     const taskIndexById = new Map(
       this.tasks.map((taskName, index) => [
         String(this.taskIdMap[taskName]),
@@ -276,6 +300,9 @@ class GridTaskTracker {
     document
       .getElementById("syncReloadBtn")
       .addEventListener("click", () => this.syncAndReloadFromSupabase());
+    document
+      .getElementById("refreshDbBtn")
+      .addEventListener("click", () => this.refreshFromSupabase());
 
     // Export
     document
@@ -629,6 +656,53 @@ class GridTaskTracker {
     }
   }
 
+  async refreshFromSupabase() {
+    if (this.isFullSyncing || this.isSyncing) return;
+    if (!hasSupabaseConfig()) {
+      window.showSupabaseSetupModal?.("Configure Supabase before refreshing.");
+      return;
+    }
+    const button = document.getElementById("refreshDbBtn");
+    const container = document.querySelector(".container");
+    const wasInert = container.inert;
+    this.isFullSyncing = true;
+    container.inert = true;
+    button.disabled = true;
+    button.textContent = "Loading...";
+    try {
+      if (this.sessionInitialization) await this.sessionInitialization;
+      await this.waitForPendingWrites();
+      const today = TimeCalculations.localDate(new Date());
+      const sessions = await this.db.getSessionsForDate(today);
+      if (!sessions.length)
+        throw new Error(
+          "No saved session was found for today. Local data was kept.",
+        );
+      const session = this.selectCloudSession(sessions);
+      if (
+        !confirm(
+          `Load cloud session ${session.id} for ${today} (${session.tasks?.length || 0} tasks, ${session.intervals?.length || 0} bubbles)?\n\nThis replaces local tasks, bubbles, memo, and notes without uploading local changes. Changes already synced cannot be undone. Other cloud sessions will not be modified.`,
+        )
+      )
+        return;
+      this.saveToLocalStorage();
+      localStorage.setItem(
+        "ettGridBeforeRefresh",
+        localStorage.getItem("ettGridState"),
+      );
+      await this.loadSessionFromSupabase(session);
+      this.lastSyncTime = new Date().toISOString();
+    } catch (error) {
+      console.error("Failed to refresh from Supabase:", error);
+      alert(`Refresh failed: ${error.message || "Unknown error"}`);
+    } finally {
+      this.isFullSyncing = false;
+      container.inert = wasInert;
+      button.disabled = false;
+      button.textContent = "Refresh from DB";
+    }
+  }
+
   async syncAndReloadFromSupabase() {
     const button = document.getElementById("syncReloadBtn");
     if (this.isFullSyncing) return;
@@ -815,47 +889,54 @@ class GridTaskTracker {
    */
   updateSummary() {
     const summaryContent = document.getElementById("summaryContent");
-    summaryContent.innerHTML = "";
-
-    let hasData = false;
-
-    this.tasks.forEach((taskName, taskIdx) => {
-      const intervalCount = this.gridData[taskIdx].filter((v) => v).length;
-
-      if (intervalCount > 0) {
-        hasData = true;
-        const minutes = intervalCount * 15;
-        const hours = Math.floor(minutes / 60);
-        const mins = minutes % 60;
-
-        let timeStr = "";
-        if (hours > 0) {
-          timeStr = `${hours}h ${mins}m`;
-        } else {
-          timeStr = `${mins}m`;
-        }
-
-        const item = document.createElement("div");
-        item.className = "summary-item";
-
-        const titleEl = document.createElement("div");
-        titleEl.className = "task-title";
-        titleEl.textContent = taskName;
-        item.appendChild(titleEl);
-
-        const statsEl = document.createElement("div");
-        statsEl.className = "task-stats";
-        statsEl.innerHTML = `<strong>${intervalCount}</strong> intervals = <strong>${timeStr}</strong>`;
-        item.appendChild(statsEl);
-
-        summaryContent.appendChild(item);
-      }
-    });
-
-    if (!hasData) {
-      summaryContent.innerHTML =
-        '<div class="summary-item empty">No time tracked yet</div>';
+    const rows = this.tasks
+      .map((name, index) => ({
+        name,
+        intervals: (this.gridData[index] || []).filter(Boolean).length,
+      }))
+      .filter((row) => row.intervals > 0);
+    const totalIntervals = rows.reduce(
+      (total, row) => total + row.intervals,
+      0,
+    );
+    const table = document.createElement("table");
+    table.className = "summary-table";
+    table.setAttribute("aria-label", "Task summary");
+    const headings = table.createTHead().insertRow();
+    for (const text of ["Task", "Intervals", "Time"]) {
+      const heading = document.createElement("th");
+      heading.scope = "col";
+      heading.textContent = text;
+      headings.appendChild(heading);
     }
+    const body = table.createTBody();
+    const appendRow = (name, intervals, className = "") => {
+      const row = body.insertRow();
+      row.className = className;
+      const heading = document.createElement("th");
+      heading.scope = "row";
+      heading.textContent = name;
+      row.appendChild(heading);
+      row.insertCell().textContent = intervals;
+      const minutes = intervals * 15;
+      row.insertCell().textContent =
+        minutes >= 60
+          ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+          : `${minutes}m`;
+      return row;
+    };
+    const totalRow = appendRow("Totals", totalIntervals, "summary-totals");
+    table.tHead.insertBefore(totalRow, headings);
+    totalRow.title =
+      "Sum of task bubbles; overlapping slots count once per task, unlike Tracked Time.";
+    rows.forEach((row) => appendRow(row.name, row.intervals));
+    if (!rows.length) {
+      const empty = body.insertRow().insertCell();
+      empty.colSpan = 3;
+      empty.className = "summary-empty";
+      empty.textContent = "No time tracked yet";
+    }
+    summaryContent.replaceChildren(table);
   }
 
   /**
@@ -1122,7 +1203,13 @@ class GridTaskTracker {
       this.updateTimeCalculations();
       return;
     }
-    if (this.isSyncing || !this.sessionId) return;
+    if (
+      this.isSyncing ||
+      this.isFullSyncing ||
+      this.isInitializingSession ||
+      !this.sessionId
+    )
+      return;
 
     this.isSyncing = true;
 
