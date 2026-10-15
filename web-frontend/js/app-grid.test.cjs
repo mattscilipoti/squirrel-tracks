@@ -81,6 +81,63 @@ function fixture(date = "2026-10-14", options = {}) {
   return { tracker, storage, elements, container, alerts };
 }
 
+test("renaming keeps the task ID and bubbles and saves the cloud name", async () => {
+  const { tracker, storage, container } = fixture("2026-10-15");
+  const originalGrid = tracker.gridData;
+  const writes = [];
+  tracker.db = {
+    updateTask: async (session, task, data) =>
+      writes.push({ session, task, name: data.name }),
+  };
+  tracker.renderGrid = () => {};
+  tracker.updateSummary = () => {};
+  await tracker.renameTask(0, "  Renamed task  ");
+  assert.equal(tracker.tasks[0], "Renamed task");
+  assert.equal(tracker.taskIdMap["Renamed task"], "task-id");
+  assert.equal(tracker.taskIdMap.Task, undefined);
+  assert.equal(tracker.gridData, originalGrid);
+  assert.deepEqual(writes, [
+    { session: "yesterday", task: "task-id", name: "Renamed task" },
+  ]);
+  assert.equal(
+    JSON.parse(storage.get("ettGridState")).tasks[0],
+    "Renamed task",
+  );
+  assert.equal(container.inert, false);
+});
+
+test("rename rejects blank and duplicate names without changing data", async () => {
+  const { tracker } = fixture();
+  tracker.tasks.push("Other");
+  await assert.rejects(tracker.renameTask(0, "  "), /Enter a task name/);
+  await assert.rejects(tracker.renameTask(0, "Other"), /already has this name/);
+  assert.equal(tracker.tasks[0], "Task");
+});
+
+test("failed cloud rename keeps the old name and restores editing", async () => {
+  const { tracker, storage, container } = fixture();
+  tracker.db = {
+    updateTask: async () => {
+      throw new Error("Permission denied");
+    },
+  };
+  await assert.rejects(tracker.renameTask(0, "New name"), /Permission denied/);
+  assert.equal(tracker.tasks[0], "Task");
+  assert.equal(tracker.taskIdMap.Task, "task-id");
+  assert.equal(storage.size, 0);
+  assert.equal(container.inert, false);
+  assert.equal(tracker.isFullSyncing, false);
+});
+
+test("local-only tasks can be renamed without a database connection", async () => {
+  const { tracker } = fixture();
+  tracker.sessionId = null;
+  tracker.renderGrid = () => {};
+  tracker.updateSummary = () => {};
+  await tracker.renameTask(0, "Local name");
+  assert.equal(tracker.tasks[0], "Local name");
+});
+
 test("database refresh finds populated session 5 instead of empty sessions 6 and 7", async () => {
   let confirmation;
   const { tracker, storage, elements, container, alerts } = fixture(
@@ -590,9 +647,14 @@ test("startup restores all six tasks and 26 bubbles and persists the recovered p
   tracker.sessionId = 6;
   tracker.tasks = [];
   tracker.gridData = [];
-  const tasks = Array.from({ length: 6 }, (_, index) => ({ id: index + 50, name: `Task ${index + 1}` }));
+  const tasks = Array.from({ length: 6 }, (_, index) => ({
+    id: index + 50,
+    name: `Task ${index + 1}`,
+  }));
   const intervals = Array.from({ length: 26 }, (_, index) => ({
-    id: index + 1, task_id: tasks[index % 6].id, interval_index: index + 36,
+    id: index + 1,
+    task_id: tasks[index % 6].id,
+    interval_index: index + 36,
   }));
   tracker.db = {
     getSessionsForDate: async () => [
@@ -605,9 +667,16 @@ test("startup restores all six tasks and 26 bubbles and persists the recovered p
       return intervals;
     },
     createSession: async () => assert.fail("Created a duplicate session"),
-    updateSession: async () => assert.fail("Wrote to the cloud during recovery"),
+    updateSession: async () =>
+      assert.fail("Wrote to the cloud during recovery"),
   };
-  for (const method of ["renderGrid", "updateTaskCount", "updateSummary", "updateTimeCalculations"]) tracker[method] = () => {};
+  for (const method of [
+    "renderGrid",
+    "updateTaskCount",
+    "updateSummary",
+    "updateTimeCalculations",
+  ])
+    tracker[method] = () => {};
   await tracker.initializeSession();
   assert.equal(tracker.sessionId, 5);
   assert.equal(tracker.tasks.length, 6);
@@ -616,7 +685,10 @@ test("startup restores all six tasks and 26 bubbles and persists the recovered p
   assert.equal(saved.sessionId, 5);
   assert.equal(saved.tasks.length, 6);
   assert.equal(saved.gridData.flat().filter(Boolean).length, 26);
-  assert.equal(tracker.selectCloudSession(await tracker.db.getSessionsForDate()).id, 5);
+  assert.equal(
+    tracker.selectCloudSession(await tracker.db.getSessionsForDate()).id,
+    5,
+  );
 });
 
 test("cloud initialization reuses a session from the same day", async () => {

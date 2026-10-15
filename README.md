@@ -62,6 +62,18 @@ current local grid as authoritative, rather than merging changes from other tabs
 Remove individual task rows with their remove control. Previous daily sessions
 are not cleared by these actions.
 
+Click a task name in the grid to edit it. Enter or leaving the field saves;
+Escape cancels. Blank names and names already used by another task are rejected.
+Renaming preserves the task's ID, filled bubbles, and summary totals. Local-only
+names are saved in this browser; cloud-backed names are committed locally only
+after Supabase accepts the update. A failed save leaves the old name in place.
+
+Before renaming cloud-backed tasks, apply
+[`20261015000001_allow_task_name_updates.sql`](supabase/migrations/20261015000001_allow_task_name_updates.sql)
+in Supabase after the earlier migrations. It permits updating task names, not
+other task columns, and does not change existing data. The existing anonymous
+access model still does not provide per-user isolation.
+
 **Refresh from DB** is the recovery action when local data is stale or the wrong
 session is selected. It prefers the current session if it has saved tasks or
 bubbles; otherwise it chooses the newest populated session for today, falling

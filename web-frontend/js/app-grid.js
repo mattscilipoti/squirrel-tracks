@@ -365,6 +365,81 @@ class GridTaskTracker {
     }
   }
 
+  editTaskName(taskIdx, button) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "task-name-editor";
+    input.value = this.tasks[taskIdx];
+    input.setAttribute("aria-label", "Task name");
+    input.title = "Enter to save; Escape to cancel";
+    let finished = false;
+    const save = async () => {
+      if (finished) return;
+      finished = true;
+      try {
+        await this.renameTask(taskIdx, input.value);
+        if (input.isConnected) input.replaceWith(button);
+      } catch (error) {
+        finished = false;
+        input.setCustomValidity(error.message || "Could not rename this task.");
+        input.reportValidity();
+        input.focus();
+      }
+    };
+    input.addEventListener("input", () => input.setCustomValidity(""));
+    input.addEventListener("blur", save);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        save();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        finished = true;
+        input.replaceWith(button);
+        button.focus();
+      }
+    });
+    button.replaceWith(input);
+    input.focus();
+    input.select();
+  }
+
+  async renameTask(taskIdx, value) {
+    const name = value.trim();
+    const previousName = this.tasks[taskIdx];
+    if (!name) throw new Error("Enter a task name.");
+    if (previousName === undefined)
+      throw new Error("This task no longer exists.");
+    if (name === previousName) return;
+    if (this.tasks.some((task, index) => index !== taskIdx && task === name)) {
+      throw new Error("Another task already has this name.");
+    }
+    if (this.isFullSyncing || this.isSyncing || this.isInitializingSession) {
+      throw new Error("Wait for the current sync to finish, then try again.");
+    }
+    const container = document.querySelector(".container");
+    const wasInert = container.inert;
+    this.isFullSyncing = true;
+    container.inert = true;
+    try {
+      await this.waitForPendingWrites();
+      const taskId = this.taskIdMap[previousName];
+      if (this.sessionId) {
+        if (!taskId) throw new Error("Sync this task before renaming it.");
+        await this.db.updateTask(this.sessionId, taskId, { name });
+      }
+      this.tasks[taskIdx] = name;
+      delete this.taskIdMap[previousName];
+      if (taskId) this.taskIdMap[name] = taskId;
+      this.renderGrid();
+      this.updateSummary();
+      this.saveToLocalStorage();
+    } finally {
+      this.isFullSyncing = false;
+      container.inert = wasInert;
+    }
+  }
+
   /**
    * Remove task by index
    */
@@ -565,7 +640,16 @@ class GridTaskTracker {
       }
 
       taskCell.appendChild(checkboxes);
-      taskCell.appendChild(document.createTextNode(taskName));
+      const nameButton = document.createElement("button");
+      nameButton.type = "button";
+      nameButton.className = "task-name-button";
+      nameButton.textContent = taskName;
+      nameButton.title = `Rename task: ${taskName}`;
+      nameButton.setAttribute("aria-label", `Rename task: ${taskName}`);
+      nameButton.addEventListener("click", () =>
+        this.editTaskName(taskIdx, nameButton),
+      );
+      taskCell.appendChild(nameButton);
 
       // Remove button
       const removeBtn = document.createElement("span");

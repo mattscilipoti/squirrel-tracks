@@ -581,6 +581,41 @@ header a:hover {
   background-color: #fffacd;
 }
 
+.task-name-button,
+.task-name-editor {
+  display: inline-block;
+  width: calc(100% - 78px);
+  min-width: 0;
+  vertical-align: middle;
+  font: inherit;
+  text-align: left;
+}
+
+.task-name-button {
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  color: inherit;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-name-button:hover {
+  text-decoration: underline;
+}
+
+.task-name-button:focus-visible {
+  outline: 2px solid #007bff;
+}
+
+.task-name-editor {
+  padding: 1px 2px;
+  border: 1px solid #007bff;
+  background: white;
+}
+
 .time-grid .task-checkboxes {
   display: inline-flex;
   gap: 3px;
