@@ -104,12 +104,14 @@
             CURRENT SLOT:
             <span class="form-value" id="currentSlotDisplay">--</span>
           </label>
-          <label>
+          <label
+            title="A short label or focus for this day's session. Use Notes below for detailed observations, context, and follow-up items."
+          >
             MEMO:
             <input
               type="text"
               id="memoInput"
-              placeholder="Notes..."
+              placeholder="Session label..."
               class="form-input-small"
               style="max-width: 200px"
             />
@@ -157,6 +159,13 @@
             title="Save this grid, tasks, and notes to Supabase, then reload the saved session. Requires a Supabase connection."
           >
             Sync &amp; Reload
+          </button>
+          <button
+            id="refreshDbBtn"
+            class="btn btn-secondary"
+            title="Load today's saved session from Supabase without uploading local changes. Confirmation is required before replacing local tasks, bubbles, memo, and notes."
+          >
+            Refresh from DB
           </button>
           <button
             id="exportBtn"

@@ -158,6 +158,13 @@ retained in `ettGridHistory` in browser localStorage. There is no past-session
 review screen yet. Local history is browser-specific and clearing site data
 removes it.
 
+Startup checks Supabase for sessions matching the local session date before
+creating a new one. A populated current session is preferred; an empty or missing
+local session pointer can recover today's newest populated cloud session instead
+of displaying an empty duplicate. Conflicting nonempty local task data is kept
+until the user confirms Refresh from DB. Failed cloud reads leave local data
+intact and do not create replacement sessions.
+
 The grid covers midnight to midnight in 96 quarter-hour slots. Current time is
 automatically centered in the scrollable area beside the sticky task names.
 Manual horizontal scrolling pauses centering for two minutes and displays a

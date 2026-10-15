@@ -47,19 +47,29 @@ python3 -m http.server 5000  # Open http://localhost:5000
 
 ### Web Grid Actions
 
-| Action                | Purpose                                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Add                   | Add a task row to today's session. Enter in the task field also adds it.                                     |
-| Clear Grid            | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes.                       |
-| Sync & Reload         | Push the current grid, tasks, and notes to Supabase, then reload the saved session. Requires a connection.   |
-| Export CSV            | Download task totals and activity summaries for the current session. Works locally.                          |
-| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering. |
+| Action                | Purpose                                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add                   | Add a task row to today's session. Enter in the task field also adds it.                                                                      |
+| Clear Grid            | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes.                                                        |
+| Sync & Reload         | Push the current grid, tasks, and notes to Supabase, then reload the saved session. Requires a connection.                                    |
+| Refresh from DB       | Read today's saved session from Supabase and replace local tasks, bubbles, memo, and notes after confirmation. Does not upload local changes. |
+| Export CSV            | Download task totals and activity summaries for the current session. Works locally.                                                           |
+| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering.                                  |
 
 Hover over each action for its tooltip. Clear Grid saves the cleared grid locally;
 use Sync & Reload to apply the clearing to Supabase. Sync & Reload treats the
 current local grid as authoritative, rather than merging changes from other tabs.
 Remove individual task rows with their remove control. Previous daily sessions
 are not cleared by these actions.
+
+**Refresh from DB** is the recovery action when local data is stale or the wrong
+session is selected. It prefers the current session if it has saved tasks or
+bubbles; otherwise it chooses the newest populated session for today, falling
+back to an empty session only if no populated one exists. Confirmation shows
+the chosen session ID and task/bubble counts. Other cloud sessions are unchanged.
+The previous local state is saved as `ettGridBeforeRefresh` in localStorage.
+Already-synced changes cannot be undone by refreshing. The action waits for
+pending writes and temporarily locks editing and auto-sync while it loads.
 
 Auto-fill Hour 1 was removed because repeating midnight's pattern across a full
 day does not represent actual tracking. Reset All was removed as an unnecessary

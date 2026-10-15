@@ -4,8 +4,10 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { test } = require("node:test");
 
-function fixture(date = "2026-10-14") {
+function fixture(date = "2026-10-14", options = {}) {
   const storage = new Map();
+  const container = { inert: false };
+  const alerts = [];
   const elements = Object.fromEntries([
     ["firstActivityDisplay", {}],
     ["lastActivityDisplay", {}],
@@ -23,6 +25,7 @@ function fixture(date = "2026-10-14") {
     ["enableBellBtn", {}],
     ["startBtn", {}],
     ["pauseBtn", {}],
+    ["refreshDbBtn", {}],
     ["autoCenterStatus", { hidden: true }],
     ["autoCenterCountdown", {}],
   ]);
@@ -35,7 +38,14 @@ function fixture(date = "2026-10-14") {
     console,
     clearInterval,
     Date: FixedDate,
-    document: { addEventListener() {}, getElementById: (id) => elements[id] },
+    hasSupabaseConfig: () => true,
+    confirm: options.confirm || (() => true),
+    alert: (message) => alerts.push(message),
+    document: {
+      addEventListener() {},
+      getElementById: (id) => elements[id],
+      querySelector: () => container,
+    },
     localStorage: {
       getItem: (key) => storage.get(key) ?? null,
       setItem: (key, value) => storage.set(key, value),
@@ -68,8 +78,88 @@ function fixture(date = "2026-10-14") {
     isFullSyncing: false,
     isInitializingSession: false,
   });
-  return { tracker, storage, elements };
+  return { tracker, storage, elements, container, alerts };
 }
+
+test("database refresh finds populated session 5 instead of empty sessions 6 and 7", async () => {
+  let confirmation;
+  const { tracker, storage, elements, container, alerts } = fixture(
+    "2026-10-15",
+    {
+      confirm: (message) => {
+        confirmation = message;
+        return true;
+      },
+    },
+  );
+  tracker.sessionId = 6;
+  tracker.db = {
+    getSessionsForDate: async () => [
+      { id: 7, date: "2026-10-15", tasks: [], intervals: [] },
+      { id: 6, date: "2026-10-15", tasks: [], intervals: [] },
+      {
+        id: 5,
+        date: "2026-10-15",
+        tasks: [{ id: 50, name: "Recovered task" }],
+        intervals: [{ id: 1 }],
+      },
+    ],
+    getSessionIntervals: async (id) => {
+      assert.equal(id, 5);
+      return [{ task_id: 50, interval_index: 52 }];
+    },
+    updateSession: async () => assert.fail("Refresh uploaded local changes"),
+  };
+  for (const method of [
+    "renderGrid",
+    "updateTaskCount",
+    "updateSummary",
+    "updateTimeCalculations",
+  ])
+    tracker[method] = () => {};
+  await tracker.refreshFromSupabase();
+  assert.match(confirmation, /session 5/);
+  assert.equal(tracker.sessionId, 5);
+  assert.equal(tracker.tasks[0], "Recovered task");
+  assert.equal(tracker.gridData[0][52], true);
+  assert.equal(JSON.parse(storage.get("ettGridBeforeRefresh")).sessionId, 6);
+  assert.equal(elements.refreshDbBtn.disabled, false);
+  assert.equal(container.inert, false);
+  assert.equal(alerts.length, 0);
+});
+
+test("canceling database refresh preserves local state", async () => {
+  const { tracker, storage, container } = fixture("2026-10-15", {
+    confirm: () => false,
+  });
+  tracker.db = {
+    getSessionsForDate: async () => [
+      { id: 5, date: "2026-10-15", tasks: [{ id: 50 }], intervals: [] },
+    ],
+    getSessionIntervals: async () => assert.fail("Loaded after cancellation"),
+  };
+  await tracker.refreshFromSupabase();
+  assert.equal(tracker.sessionId, "yesterday");
+  assert.deepEqual(tracker.tasks, ["Task"]);
+  assert.equal(storage.size, 0);
+  assert.equal(container.inert, false);
+});
+
+test("database refresh failure preserves local data and re-enables controls", async () => {
+  const { tracker, elements, container, alerts } = fixture("2026-10-15");
+  tracker.db = {
+    getSessionsForDate: async () => {
+      throw new Error("Offline");
+    },
+  };
+  await tracker.refreshFromSupabase();
+  assert.equal(tracker.sessionId, "yesterday");
+  assert.deepEqual(tracker.tasks, ["Task"]);
+  assert.equal(elements.refreshDbBtn.disabled, false);
+  assert.equal(container.inert, false);
+  assert.equal(tracker.isFullSyncing, false);
+  assert.match(alerts[0], /Offline/);
+});
 
 test("reminder starts automatically and repeats without alerts or stopping", () => {
   const { tracker, elements } = fixture();
@@ -381,7 +471,10 @@ test("cloud initialization does not restore a session from a different day", asy
   const { tracker } = fixture("2026-10-15");
   const created = [];
   tracker.db = {
-    getSession: async () => ({ id: "yesterday", date: "2026-10-14" }),
+    getSessionsForDate: async (date) => {
+      assert.equal(date, "2026-10-15");
+      return [];
+    },
     createSession: async (data) => {
       created.push(data);
       return { id: "today" };
@@ -396,11 +489,144 @@ test("cloud initialization does not restore a session from a different day", asy
   assert.equal(tracker.isInitializingSession, false);
 });
 
+test("failed interval loading leaves the current local session intact", async () => {
+  const { tracker, storage, elements } = fixture("2026-10-15");
+  const original = JSON.stringify({
+    tasks: tracker.tasks,
+    gridData: tracker.gridData,
+    sessionId: tracker.sessionId,
+    memo: elements.memoInput.value,
+    notes: elements.notesInput.value,
+  });
+  tracker.db = {
+    getSessionIntervals: async () => {
+      throw new Error("Connection interrupted");
+    },
+  };
+  await assert.rejects(
+    tracker.loadSessionFromSupabase({
+      id: "remote-session",
+      date: "2026-10-15",
+      memo: "Remote memo",
+      tasks: [],
+    }),
+    /Connection interrupted/,
+  );
+  assert.equal(
+    JSON.stringify({
+      tasks: tracker.tasks,
+      gridData: tracker.gridData,
+      sessionId: tracker.sessionId,
+      memo: elements.memoInput.value,
+      notes: elements.notesInput.value,
+    }),
+    original,
+  );
+  assert.equal(storage.size, 0);
+});
+
+test("a cloud load failure does not create a replacement session", async () => {
+  const { tracker, storage } = fixture("2026-10-15");
+  tracker.db = {
+    getSessionsForDate: async () => {
+      throw new Error("Temporary network error");
+    },
+    createSession: async () => assert.fail("Created a replacement session"),
+  };
+  await tracker.initializeSession();
+  assert.equal(tracker.sessionId, "yesterday");
+  assert.deepEqual(tracker.tasks, ["Task"]);
+  assert.equal(tracker.gridData[0][0], true);
+  assert.equal(tracker.isInitializingSession, false);
+  assert.equal(storage.size, 0);
+});
+
+test("startup recovers populated session 5 when saved session 6 is empty", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.sessionId = 6;
+  tracker.tasks = [];
+  tracker.gridData = [];
+  const empty = { id: 6, date: "2026-10-15", tasks: [], intervals: [] };
+  const populated = {
+    id: 5,
+    date: "2026-10-15",
+    tasks: [{ id: 50 }],
+    intervals: [{ id: 1 }],
+  };
+  tracker.db = {
+    getSession: async () => empty,
+    getSessionsForDate: async () => [{ ...empty, id: 7 }, empty, populated],
+    createSession: async () => assert.fail("Created another empty session"),
+  };
+  let restored;
+  tracker.loadSessionFromSupabase = async (session) => {
+    restored = session.id;
+  };
+  await tracker.initializeSession();
+  assert.equal(restored, 5);
+});
+
+test("startup looks up today's existing sessions before creating one without a saved ID", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.sessionId = null;
+  tracker.tasks = [];
+  tracker.gridData = [];
+  tracker.db = {
+    getSessionsForDate: async () => [
+      { id: 5, date: "2026-10-15", tasks: [{ id: 50 }] },
+    ],
+    createSession: async () => assert.fail("Created a duplicate session"),
+  };
+  let restored;
+  tracker.loadSessionFromSupabase = async (session) => {
+    restored = session.id;
+  };
+  await tracker.initializeSession();
+  assert.equal(restored, 5);
+});
+
+test("startup restores all six tasks and 26 bubbles and persists the recovered pointer", async () => {
+  const { tracker, storage } = fixture("2026-10-15");
+  tracker.sessionId = 6;
+  tracker.tasks = [];
+  tracker.gridData = [];
+  const tasks = Array.from({ length: 6 }, (_, index) => ({ id: index + 50, name: `Task ${index + 1}` }));
+  const intervals = Array.from({ length: 26 }, (_, index) => ({
+    id: index + 1, task_id: tasks[index % 6].id, interval_index: index + 36,
+  }));
+  tracker.db = {
+    getSessionsForDate: async () => [
+      { id: 7, date: "2026-10-15", tasks: [], intervals: [] },
+      { id: 6, date: "2026-10-15", tasks: [], intervals: [] },
+      { id: 5, date: "2026-10-15", tasks, intervals },
+    ],
+    getSessionIntervals: async (id) => {
+      assert.equal(id, 5);
+      return intervals;
+    },
+    createSession: async () => assert.fail("Created a duplicate session"),
+    updateSession: async () => assert.fail("Wrote to the cloud during recovery"),
+  };
+  for (const method of ["renderGrid", "updateTaskCount", "updateSummary", "updateTimeCalculations"]) tracker[method] = () => {};
+  await tracker.initializeSession();
+  assert.equal(tracker.sessionId, 5);
+  assert.equal(tracker.tasks.length, 6);
+  assert.equal(tracker.gridData.flat().filter(Boolean).length, 26);
+  const saved = JSON.parse(storage.get("ettGridState"));
+  assert.equal(saved.sessionId, 5);
+  assert.equal(saved.tasks.length, 6);
+  assert.equal(saved.gridData.flat().filter(Boolean).length, 26);
+  assert.equal(tracker.selectCloudSession(await tracker.db.getSessionsForDate()).id, 5);
+});
+
 test("cloud initialization reuses a session from the same day", async () => {
   const { tracker } = fixture("2026-10-15");
+  tracker.sessionId = "existing";
   let restored = false;
   tracker.db = {
-    getSession: async () => ({ id: "existing", date: "2026-10-15" }),
+    getSessionsForDate: async () => [
+      { id: "existing", date: "2026-10-15", tasks: [{ id: 50 }] },
+    ],
     createSession: async () => assert.fail("Created an unnecessary session"),
   };
   tracker.loadSessionFromSupabase = async () => {
@@ -409,6 +635,22 @@ test("cloud initialization reuses a session from the same day", async () => {
   await tracker.initializeSession();
   assert.equal(restored, true);
   assert.equal(tracker.isInitializingSession, false);
+});
+
+test("startup does not replace local tasks with a different or empty cloud session", async () => {
+  for (const session of [
+    { id: "different", date: "2026-10-15", tasks: [{ id: 50 }] },
+    { id: "yesterday", date: "2026-10-15", tasks: [] },
+  ]) {
+    const { tracker } = fixture("2026-10-15");
+    tracker.db = { getSessionsForDate: async () => [session] };
+    tracker.loadSessionFromSupabase = async () =>
+      assert.fail("Replaced local tasks without confirmation");
+    await tracker.initializeSession();
+    assert.equal(tracker.sessionId, "yesterday");
+    assert.deepEqual(tracker.tasks, ["Task"]);
+    assert.equal(tracker.gridData[0][0], true);
+  }
 });
 
 test("restoring an old cloud response cannot change today's session or date field", () => {
