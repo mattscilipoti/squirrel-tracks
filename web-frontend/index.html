@@ -72,13 +72,16 @@
             <span class="form-value" id="firstActivityDisplay">--</span>
           </label>
           <label>
-            LAST ACTIVITY: <span class="form-value" id="lastActivityDisplay">--</span>
+            LAST ACTIVITY:
+            <span class="form-value" id="lastActivityDisplay">--</span>
           </label>
           <label>
-            SESSION SPAN: <span class="form-value" id="sessionSpanDisplay">--</span>
+            SESSION SPAN:
+            <span class="form-value" id="sessionSpanDisplay">--</span>
           </label>
           <label>
-            TRACKED TIME: <span class="form-value" id="trackedTimeDisplay">--</span>
+            TRACKED TIME:
+            <span class="form-value" id="trackedTimeDisplay">--</span>
           </label>
           <label>
             CURRENT SLOT:
@@ -132,20 +135,20 @@
               placeholder="Enter task name..."
               class="input-field-small"
             />
-            <button id="addTaskBtn" class="btn btn-primary btn-small">
+            <button id="addTaskBtn" class="btn btn-primary btn-small"
+              title="Add a task row to today's session.">
               Add
             </button>
           </div>
           <div class="spacer"></div>
-          <button id="autoFillBtn" class="btn btn-primary">
-            Auto-fill Hour 1
-          </button>
-          <button id="clearGridBtn" class="btn btn-tertiary">Clear Grid</button>
-          <button id="syncReloadBtn" class="btn btn-secondary">
+          <button id="clearGridBtn" class="btn btn-tertiary"
+            title="Clear this session's bubbles after confirmation; keep tasks and notes. Use Sync &amp; Reload to save the cleared grid to Supabase.">Clear Grid</button>
+          <button id="syncReloadBtn" class="btn btn-secondary"
+            title="Save this grid, tasks, and notes to Supabase, then reload the saved session. Requires a Supabase connection.">
             Sync &amp; Reload
           </button>
-          <button id="exportBtn" class="btn btn-secondary">Export CSV</button>
-          <button id="clearBtn" class="btn btn-danger">Reset All</button>
+          <button id="exportBtn" class="btn btn-secondary"
+            title="Download this session's task totals and activity summaries as a CSV file.">Export CSV</button>
         </section>
 
         <!-- Time Grid -->
@@ -158,6 +161,7 @@
             id="resumeAutoCenterBtn"
             class="btn btn-secondary btn-small"
             type="button"
+            title="Center the grid on the current time now and resume automatic centering."
           >
             Resume auto-centering
           </button>

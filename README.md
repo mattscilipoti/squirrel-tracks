@@ -42,6 +42,26 @@ cd web-frontend
 python3 -m http.server 5000  # Open http://localhost:5000
 ```
 
+### Web Grid Actions
+
+| Action | Purpose |
+|--------|---------|
+| Add | Add a task row to today's session. Enter in the task field also adds it. |
+| Clear Grid | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes. |
+| Sync & Reload | Push the current grid, tasks, and notes to Supabase, then reload the saved session. Requires a connection. |
+| Export CSV | Download task totals and activity summaries for the current session. Works locally. |
+| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering. |
+
+Hover over each action for its tooltip. Clear Grid saves the cleared grid locally;
+use Sync & Reload to apply the clearing to Supabase. Sync & Reload treats the
+current local grid as authoritative, rather than merging changes from other tabs.
+Remove individual task rows with their remove control. Previous daily sessions
+are not cleared by these actions.
+
+Auto-fill Hour 1 was removed because repeating midnight's pattern across a full
+day does not represent actual tracking. Reset All was removed as an unnecessary
+bulk task-deletion action; individual row removal and Clear Grid remain available.
+
 ### 4. Build iOS App
 ```bash
 cd ios-app

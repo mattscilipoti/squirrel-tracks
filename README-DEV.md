@@ -176,14 +176,6 @@ The existing saved `start_time` field now reflects First Activity, and CSV
 metadata includes all four activity summaries. No schema migration is needed
 for this header change.
 
-Before using this version with Supabase, apply
-[`20261015000000_expand_daily_grid.sql`](supabase/migrations/20261015000000_expand_daily_grid.sql)
-once through your migration workflow or Supabase SQL Editor. Close older app
-tabs before migrating and reload them afterward. The migration expands the
-database interval range and shifts legacy 9 AM-based entries by 36 slots to
-preserve their clock times. Local 60-slot grids are converted automatically on
-load. Do not use the expanded frontend with an unmigrated database.
-
 ### JavaScript Tests
 
 From the repository root, run:
