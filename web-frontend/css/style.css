@@ -376,8 +376,29 @@ header a:hover {
 }
 
 .grid-container {
+  position: relative;
   overflow-x: auto;
   border: 1px solid #ddd;
+}
+
+.current-time-line {
+  position: absolute;
+  width: 2px;
+  background: #c62828;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.current-time-line::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #c62828;
 }
 
 /* Table Styling */

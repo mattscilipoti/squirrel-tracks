@@ -35,12 +35,14 @@ ett/
 ## Prerequisites
 
 ### System Requirements
+
 - macOS 13+ (for iOS development) OR Linux/Windows (backend + web only)
 - 10 GB free disk space
 
 ### Install Global Dependencies
 
 **Ruby** (for Rails backend):
+
 ```bash
 # macOS with Homebrew
 brew install ruby@3.3
@@ -54,6 +56,7 @@ ruby --version  # Should be 3.3.0+
 ```
 
 **Node.js** (optional; not required for this project, but useful for future tooling):
+
 ```bash
 brew install node@20
 # OR
@@ -61,6 +64,7 @@ curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-ge
 ```
 
 **Xcode** (for iOS development):
+
 ```bash
 # macOS
 xcode-select --install
@@ -68,6 +72,7 @@ xcode-select --install
 ```
 
 **PostgreSQL** (for Rails backend):
+
 ```bash
 # macOS
 brew install postgresql@16
@@ -112,6 +117,7 @@ rails server
 ```
 
 **Verify**:
+
 - Server runs without errors
 - `curl http://localhost:3000/api/health` returns OK (after implementing health endpoint)
 - PostgreSQL is running: `psql -U postgres -d ett_development -c "SELECT 1;"`
@@ -139,10 +145,32 @@ ruby -run -ehttpd . -p5000
 ```
 
 **Verify**:
+
 - Open http://localhost:5000 in browser
 - Timer displays "15:00"
 - All buttons functional
 - localStorage persists data (open DevTools → Application → Local Storage)
+
+Sessions roll over to a blank session on a new local day, at startup, on the
+minute refresh, or when returning to the tab. Active writes and syncs finish
+before rollover. Previous cloud sessions remain unchanged; local snapshots are
+retained in `ettGridHistory` in browser localStorage. There is no past-session
+review screen yet. Local history is browser-specific and clearing site data
+removes it.
+
+### JavaScript Tests
+
+From the repository root, run:
+
+```bash
+node --test web-frontend/js/*.test.cjs
+```
+
+Requires Node.js 18 or newer; no npm dependencies are needed. Tests supply explicit
+dates and times to the calculation helpers without a browser or a mocked clock.
+Coverage includes local-date parsing, elapsed intervals, completion boundaries,
+and current-time line positions in Eastern, UTC, and India timezones. Session
+tests cover daily rollover, local archival, same-day reuse, and active-write guards.
 
 ---
 
@@ -161,11 +189,13 @@ open EmergenTaskTracker.xcworkspace
 ```
 
 **In Xcode**:
+
 1. Select "EmergenTaskTracker" scheme
 2. Select iPhone Simulator (e.g., iPhone 15)
 3. Press ⌘R to build and run
 
 **Verify**:
+
 - App launches in simulator
 - Timer displays and counts down
 - Tasks can be added locally
@@ -178,6 +208,7 @@ open EmergenTaskTracker.xcworkspace
 ### 1. Backend ↔ Web Frontend
 
 **Start both**:
+
 ```bash
 # Terminal 1: Backend
 cd backend && rails server
@@ -187,6 +218,7 @@ cd web-frontend && python3 -m http.server 5000
 ```
 
 **Test**:
+
 - Open http://localhost:5000
 - Start timer, log a task
 - Check Rails console for API requests
@@ -195,11 +227,13 @@ cd web-frontend && python3 -m http.server 5000
 ### 2. Backend ↔ iOS App
 
 **Start backend**:
+
 ```bash
 cd backend && rails server
 ```
 
 **In Xcode**:
+
 - Update `APIClient` base URL to your local IP (e.g., `http://192.168.1.100:3000/api`)
 - Run app in simulator
 - Start timer, log task
@@ -209,14 +243,14 @@ cd backend && rails server
 
 ## Cost-Effective Choices
 
-| Component | Tool | Why | Cost |
-|-----------|------|-----|------|
-| Backend | Rails 7.1 | Opinionated, fast development | Free |
-| Database | PostgreSQL | Reliable, FOSS | Free |
-| Web | Vanilla JS | No build overhead, GitHub Pages compatible | Free |
-| iOS | SwiftUI + Realm | Modern, lightweight, FOSS | Free |
-| VCS | GitHub | Standard, CI/CD ready | Free (public repos) |
-| Hosting | Heroku Free Tier (legacy) or Railway | Minimal cost for hobby projects | ~$5/mo |
+| Component | Tool                                 | Why                                        | Cost                |
+| --------- | ------------------------------------ | ------------------------------------------ | ------------------- |
+| Backend   | Rails 7.1                            | Opinionated, fast development              | Free                |
+| Database  | PostgreSQL                           | Reliable, FOSS                             | Free                |
+| Web       | Vanilla JS                           | No build overhead, GitHub Pages compatible | Free                |
+| iOS       | SwiftUI + Realm                      | Modern, lightweight, FOSS                  | Free                |
+| VCS       | GitHub                               | Standard, CI/CD ready                      | Free (public repos) |
+| Hosting   | Heroku Free Tier (legacy) or Railway | Minimal cost for hobby projects            | ~$5/mo              |
 
 ---
 
@@ -225,17 +259,20 @@ cd backend && rails server
 Create `.env` files in each directory for sensitive config:
 
 **backend/.env**:
+
 ```
 DATABASE_URL=postgresql://user:pass@localhost:5432/ett_development
 RAILS_ENV=development
 ```
 
 **web-frontend/.env** (if needed later):
+
 ```
 API_BASE_URL=http://localhost:3000/api
 ```
 
 **ios-app/.env** (use Xcode build settings instead):
+
 ```
 API_BASE_URL=http://192.168.1.100:3000/api
 ```
@@ -245,6 +282,7 @@ API_BASE_URL=http://192.168.1.100:3000/api
 ## Debugging
 
 ### Rails Backend
+
 ```bash
 # Check database connection
 rails db:version
@@ -257,12 +295,14 @@ tail -f log/development.log
 ```
 
 ### Web Frontend
+
 - Open DevTools (F12)
 - Check Console for JS errors
 - Check Network tab for API calls
 - Check Application → Local Storage for state
 
 ### iOS App
+
 - Open Xcode Console (⇧⌘C)
 - Use `po` command to inspect objects
 - Check Realm Studio: `/Applications/Realm Studio.app` (optional download)

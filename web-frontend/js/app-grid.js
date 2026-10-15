@@ -11,7 +11,7 @@ class GridTaskTracker {
     this.sessionId = null;
     this.startTime = "";
     this.memo = "";
-    this.date = new Date().toISOString().split("T")[0];
+    this.date = TimeCalculations.localDate(new Date());
     this.notes = "";
 
     // Supabase client
@@ -21,6 +21,7 @@ class GridTaskTracker {
     this.isFullSyncing = false;
     this.pendingWrites = new Set();
     this.sessionInitialization = null;
+    this.isInitializingSession = false;
 
     this.timerState = {
       isRunning: false,
@@ -31,6 +32,8 @@ class GridTaskTracker {
 
     this.initializeUI();
     this.loadFromLocalStorage();
+    this.rolloverDailySession();
+    document.getElementById("dateInput").value = this.date;
     if (hasSupabaseConfig()) {
       this.sessionInitialization = this.initializeSession();
     }
@@ -38,6 +41,14 @@ class GridTaskTracker {
     this.bindEvents();
     this.updateTaskCount();
     this.updateTimeCalculations();
+
+    this.currentTimeObserver = new ResizeObserver(() =>
+      this.updateCurrentTimeLine(),
+    );
+    this.currentTimeObserver.observe(document.getElementById("timeGrid"));
+    document.addEventListener("visibilitychange", () =>
+      this.updateTimeCalculations(),
+    );
 
     // Update time calculations every minute
     setInterval(() => this.updateTimeCalculations(), 60000);
@@ -50,15 +61,25 @@ class GridTaskTracker {
    * Initialize or load session from Supabase
    */
   async initializeSession() {
+    this.isInitializingSession = true;
+    try {
+      await this.loadOrCreateSession();
+    } finally {
+      this.isInitializingSession = false;
+    }
+  }
+
+  async loadOrCreateSession() {
     // Check if we have a saved session ID
     if (this.sessionId) {
       try {
         const session = await this.db.getSession(this.sessionId);
-        if (session) {
+        if (session && session.date === this.date) {
           console.log("Session loaded from Supabase:", this.sessionId);
           await this.loadSessionFromSupabase(session);
           return;
         }
+        this.sessionId = null;
       } catch (error) {
         console.warn("Failed to load session, creating new one:", error);
       }
@@ -91,10 +112,17 @@ class GridTaskTracker {
    * Restore session data from Supabase
    */
   restoreSessionData(session) {
+    const today = TimeCalculations.localDate(new Date());
+    if (session.date !== today) {
+      throw new Error(
+        "Cannot restore a session from a different day into today's tracker.",
+      );
+    }
+
     this.sessionId = session.id;
     this.startTime = session.start_time || "";
     this.memo = session.memo || "";
-    this.date = session.date || this.date;
+    this.date = today;
     this.notes = session.notes || "";
 
     // Update form fields
@@ -164,9 +192,10 @@ class GridTaskTracker {
     document
       .getElementById("memoInput")
       ?.addEventListener("change", () => this.saveToLocalStorage());
-    document
-      .getElementById("dateInput")
-      ?.addEventListener("change", () => this.saveToLocalStorage());
+    document.getElementById("dateInput")?.addEventListener("change", () => {
+      this.updateTimeCalculations();
+      this.saveToLocalStorage();
+    });
     document
       .getElementById("notesInput")
       ?.addEventListener("change", () => this.saveToLocalStorage());
@@ -304,64 +333,48 @@ class GridTaskTracker {
    * Calculate and display end time, elapsed time, and current interval
    */
   updateTimeCalculations() {
+    const now = new Date();
+    if (this.rolloverDailySession(now)) {
+      this.renderGrid();
+      this.updateTaskCount();
+      this.updateSummary();
+      if (hasSupabaseConfig()) {
+        this.sessionInitialization = this.initializeSession();
+      }
+    }
+    this.updateCurrentTimeLine(now);
     const startTimeInput = document.getElementById("startTimeInput")?.value;
     const dateInput = document.getElementById("dateInput")?.value;
+    const result = TimeCalculations.sessionTime(now, startTimeInput, dateInput);
+    document.getElementById("endTimeDisplay").textContent = result.endTime;
+    document.getElementById("elapsedDisplay").textContent = result.elapsedText;
+    document.getElementById("currentIntervalDisplay").textContent =
+      result.intervalText;
+  }
 
-    if (!startTimeInput) {
-      // No start time set
-      document.getElementById("endTimeDisplay").textContent = "--:--";
-      document.getElementById("elapsedDisplay").textContent = "0h 0m";
-      document.getElementById("currentIntervalDisplay").textContent = "-";
-      return;
-    }
-
-    // Parse start time
-    const [startHour, startMin] = startTimeInput.split(":").map(Number);
-    const startDate = new Date(
-      dateInput || new Date().toISOString().split("T")[0],
+  updateCurrentTimeLine(now = new Date()) {
+    const line = document.getElementById("currentTimeLine");
+    const table = document.getElementById("timeGrid");
+    const container = table.parentElement;
+    const body = table.tBodies[0];
+    const columns = table.querySelectorAll(".interval-number");
+    const startHour = Number(table.querySelector(".hour-label").textContent);
+    const position = TimeCalculations.gridPosition(
+      now,
+      startHour,
+      columns.length,
     );
-    startDate.setHours(startHour, startMin, 0, 0);
 
-    // Calculate end time (start + 15 hours)
-    const endDate = new Date(startDate);
-    endDate.setHours(endDate.getHours() + 15);
+    line.hidden = !body.rows.length || !position;
+    if (line.hidden) return;
 
-    // Display end time
-    const endHour = String(endDate.getHours()).padStart(2, "0");
-    const endMin = String(endDate.getMinutes()).padStart(2, "0");
-    document.getElementById("endTimeDisplay").textContent =
-      `${endHour}:${endMin}`;
-
-    // Calculate elapsed time since start
-    const now = new Date();
-    const elapsed = now - startDate;
-    const elapsedMinutes = Math.floor(elapsed / (1000 * 60));
-    const elapsedHours = Math.floor(elapsedMinutes / 60);
-    const elapsedMins = elapsedMinutes % 60;
-    document.getElementById("elapsedDisplay").textContent =
-      `${elapsedHours}h ${elapsedMins}m`;
-
-    // Calculate current interval (0-59)
-    // Each interval is 15 minutes
-    const intervalsElapsed = Math.floor(elapsedMinutes / 15);
-    const currentInterval = Math.min(intervalsElapsed, 59); // Cap at 59 (60 intervals total, 0-59)
-
-    if (elapsedMinutes < 0) {
-      // Start time is in the future
-      document.getElementById("currentIntervalDisplay").textContent =
-        "Not started";
-    } else if (intervalsElapsed >= 60) {
-      // Tracking complete or exceeded
-      document.getElementById("currentIntervalDisplay").textContent =
-        "Complete";
-    } else {
-      // Show current interval (1-indexed for display)
-      const intervalNum = currentInterval + 1;
-      const intervalHour = Math.floor(currentInterval / 4) + 1;
-      const intervalInHour = (currentInterval % 4) + 1;
-      document.getElementById("currentIntervalDisplay").textContent =
-        `${intervalNum} (Hour ${intervalHour}.${intervalInHour})`;
-    }
+    const { intervalIndex, fraction } = position;
+    const columnRect = columns[intervalIndex].getBoundingClientRect();
+    const bodyRect = body.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    line.style.left = `${columnRect.left + columnRect.width * fraction - containerRect.left - container.clientLeft + container.scrollLeft}px`;
+    line.style.top = `${bodyRect.top - containerRect.top - container.clientTop + container.scrollTop}px`;
+    line.style.height = `${bodyRect.height}px`;
   }
 
   /**
@@ -438,6 +451,7 @@ class GridTaskTracker {
       tbody.appendChild(row);
     });
 
+    this.updateCurrentTimeLine();
     this.saveToLocalStorage();
   }
 
@@ -868,6 +882,42 @@ class GridTaskTracker {
     }
   }
 
+  rolloverDailySession(now = new Date()) {
+    const today = TimeCalculations.localDate(now);
+    if (
+      this.date === today ||
+      this.isInitializingSession ||
+      this.isSyncing ||
+      this.isFullSyncing ||
+      this.pendingWrites.size > 0
+    )
+      return false;
+
+    this.saveToLocalStorage();
+    const previousState = JSON.parse(localStorage.getItem("ettGridState"));
+    const history = JSON.parse(localStorage.getItem("ettGridHistory") || "{}");
+    history[`${this.date}:${this.sessionId || "local"}`] = previousState;
+    localStorage.setItem("ettGridHistory", JSON.stringify(history));
+
+    this.timerReset();
+    this.timerState.currentInterval = 0;
+    this.tasks = [];
+    this.taskIdMap = {};
+    this.gridData = [];
+    this.sessionId = null;
+    this.lastSyncTime = null;
+    this.startTime = "";
+    this.memo = "";
+    this.notes = "";
+    this.date = today;
+    for (const field of ["startTimeInput", "memoInput", "notesInput"]) {
+      document.getElementById(field).value = "";
+    }
+    document.getElementById("dateInput").value = today;
+    this.saveToLocalStorage();
+    return true;
+  }
+
   /**
    * Save state to localStorage
    */
@@ -895,6 +945,10 @@ class GridTaskTracker {
    * Sync session metadata to Supabase
    */
   async syncToSupabase() {
+    if (this.date !== TimeCalculations.localDate(new Date())) {
+      this.updateTimeCalculations();
+      return;
+    }
     if (this.isSyncing || !this.sessionId) return;
 
     this.isSyncing = true;
@@ -936,7 +990,7 @@ class GridTaskTracker {
         this.sessionId = state.sessionId;
         this.startTime = state.startTime || "";
         this.memo = state.memo || "";
-        this.date = state.date || new Date().toISOString().split("T")[0];
+        this.date = state.date || TimeCalculations.localDate(new Date());
         this.notes = state.notes || "";
 
         // Restore form fields
