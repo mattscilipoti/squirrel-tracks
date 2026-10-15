@@ -12,10 +12,15 @@ function fixture(date = "2026-10-14") {
     ["sessionSpanDisplay", {}],
     ["trackedTimeDisplay", {}],
     ["currentSlotDisplay", {}],
-    ["dateInput", { value: date }],
+    ["dateDisplay", { textContent: date }],
     ["memoInput", { value: "Yesterday's memo" }],
     ["notesInput", { value: "Yesterday's notes" }],
     ["timerDisplay", {}],
+    ["reminderMinutesInput", {}],
+    ["bellEnabledInput", {}],
+    ["bellVolumeInput", {}],
+    ["bellVolumeValue", {}],
+    ["enableBellBtn", {}],
     ["startBtn", {}],
     ["pauseBtn", {}],
     ["autoCenterStatus", { hidden: true }],
@@ -66,6 +71,154 @@ function fixture(date = "2026-10-14") {
   return { tracker, storage, elements };
 }
 
+test("reminder starts automatically and repeats without alerts or stopping", () => {
+  const { tracker, elements } = fixture();
+  let bells = 0;
+  tracker.playReminderBell = () => {
+    bells++;
+  };
+  tracker.initializeReminder(0);
+  assert.equal(elements.timerDisplay.textContent, "15:00");
+  assert.equal(tracker.timerState.isRunning, true);
+  tracker.timerTick(900000);
+  assert.equal(bells, 1);
+  assert.equal(elements.timerDisplay.textContent, "15:00");
+  assert.equal(tracker.timerState.isRunning, true);
+  tracker.timerTick(900000);
+  assert.equal(bells, 1);
+  tracker.timerTick(1800000);
+  assert.equal(bells, 2);
+});
+
+test("saved custom interval and muted bell survive reload", () => {
+  const { tracker, storage, elements } = fixture();
+  storage.set(
+    "ettReminderSettings",
+    JSON.stringify({
+      minutes: 5,
+      bellEnabled: false,
+      nextReminderAt: 300000,
+    }),
+  );
+  tracker.playReminderBell = () => assert.fail("Muted reminder rang");
+  tracker.initializeReminder(120000);
+  assert.equal(elements.timerDisplay.textContent, "3:00");
+  assert.equal(elements.reminderMinutesInput.value, 5);
+  assert.equal(elements.bellEnabledInput.checked, false);
+  assert.equal(elements.enableBellBtn.hidden, true);
+  tracker.timerTick(300000);
+  assert.equal(elements.timerDisplay.textContent, "5:00");
+  assert.equal(
+    JSON.parse(storage.get("ettReminderSettings")).bellEnabled,
+    false,
+  );
+});
+
+test("bell volume defaults to the existing level and persists independently of mute", () => {
+  const { tracker, storage, elements } = fixture();
+  tracker.initializeReminder(0);
+  assert.equal(tracker.bellVolume, 1);
+  assert.equal(elements.bellVolumeValue.textContent, "100%");
+  const gains = [];
+  tracker.audioContext = { state: "running", currentTime: 5 };
+  tracker.bellOutput = {
+    gain: { setTargetAtTime: (value) => gains.push(value) },
+  };
+  tracker.setBellVolume(35);
+  assert.equal(gains.at(-1), 0.35);
+  assert.equal(elements.bellVolumeValue.textContent, "35%");
+  tracker.bellEnabled = false;
+  tracker.updateBellVolume();
+  tracker.saveReminderSettings();
+  assert.equal(gains.at(-1), 0);
+  assert.equal(JSON.parse(storage.get("ettReminderSettings")).volume, 0.35);
+  tracker.initializeReminder(0);
+  assert.equal(tracker.bellEnabled, false);
+  assert.equal(elements.bellVolumeInput.value, 35);
+  assert.equal(gains.at(-1), 0);
+  tracker.setBellVolume(60);
+  assert.equal(gains.at(-1), 0);
+  tracker.bellEnabled = true;
+  tracker.updateBellVolume();
+  assert.equal(gains.at(-1), 0.6);
+});
+
+test("volume accepts silence and rejects invalid stored settings", () => {
+  for (const volume of [0, 0.5, 1, -1, 2, "0.5", null]) {
+    const { tracker, storage } = fixture();
+    storage.set("ettReminderSettings", JSON.stringify({ volume }));
+    tracker.initializeReminder(0);
+    const valid = typeof volume === "number" && volume >= 0 && volume <= 1;
+    assert.equal(tracker.bellVolume, valid ? volume : 1);
+    tracker.setBellVolume(-10);
+    assert.equal(tracker.bellVolume, 0);
+    tracker.setBellVolume(110);
+    assert.equal(tracker.bellVolume, 1);
+    tracker.setBellVolume(NaN);
+    assert.equal(tracker.bellVolume, 1);
+  }
+});
+
+test("long suspensions and overdue reloads skip missed bells", () => {
+  const { tracker, elements } = fixture();
+  tracker.playReminderBell = () => assert.fail("Missed reminder rang");
+  tracker.initializeReminder(0);
+  tracker.timerTick(2705000);
+  assert.equal(elements.timerDisplay.textContent, "14:55");
+  tracker.initializeReminder(4500000);
+  assert.equal(elements.timerDisplay.textContent, "15:00");
+  assert.equal(tracker.nextReminderAt, 5400000);
+});
+
+test("invalid or corrupt reminder settings fall back to 15 minutes", () => {
+  for (const settings of [
+    "invalid",
+    "null",
+    '{"minutes":0}',
+    '{"minutes":121}',
+    '{"minutes":1.5}',
+  ]) {
+    const { tracker, storage, elements } = fixture();
+    storage.set("ettReminderSettings", settings);
+    tracker.initializeReminder(0);
+    assert.equal(elements.reminderMinutesInput.value, 15);
+    assert.equal(elements.timerDisplay.textContent, "15:00");
+  }
+});
+
+test("bell requires enabled, unlocked audio", () => {
+  const { tracker } = fixture();
+  tracker.bellEnabled = false;
+  tracker.audioContext = {
+    state: "running",
+    createOscillator: () => assert.fail("Muted audio played"),
+  };
+  tracker.playReminderBell();
+  tracker.bellEnabled = true;
+  tracker.audioContext.state = "suspended";
+  tracker.playReminderBell();
+});
+
+test("audio enable button is shown for unknown or inactive audio and hidden when ready or muted", () => {
+  const { tracker, elements } = fixture();
+  tracker.bellEnabled = true;
+  for (const state of [
+    undefined,
+    "suspended",
+    "interrupted",
+    "closed",
+    "running",
+  ]) {
+    tracker.audioContext = state ? { state } : undefined;
+    tracker.updateBellControl();
+    assert.equal(elements.enableBellBtn.hidden, state === "running");
+  }
+  tracker.bellEnabled = false;
+  tracker.audioContext = undefined;
+  tracker.updateBellControl();
+  assert.equal(elements.enableBellBtn.hidden, true);
+});
+
 test("header summaries update from bubbles while current slot stays clock-based", () => {
   const { tracker, elements, storage } = fixture("2026-10-15");
   tracker.updateCurrentTimeLine = () => {};
@@ -89,6 +242,23 @@ test("header summaries update from bubbles while current slot stays clock-based"
   assert.equal(elements.trackedTimeDisplay.textContent, "--");
   assert.equal(elements.currentSlotDisplay.textContent, "53 / 96");
   assert.equal(JSON.parse(storage.get("ettGridState")).startTime, "");
+});
+
+test("saving and syncing use the session date rather than display text", async () => {
+  const { tracker, elements, storage } = fixture("2026-10-15");
+  elements.dateDisplay.textContent = "2026-10-14";
+  tracker.saveToLocalStorage();
+  assert.equal(tracker.date, "2026-10-15");
+  assert.equal(JSON.parse(storage.get("ettGridState")).date, "2026-10-15");
+  const updates = [];
+  tracker.db = {
+    updateSession: async (id, data) => updates.push({ id, data }),
+  };
+  await tracker.syncToSupabase();
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].data.date, "2026-10-15");
+  assert.equal(tracker.sessionId, "yesterday");
+  assert.equal(tracker.rolloverDailySession(new Date(2026, 9, 15, 13)), false);
 });
 
 test("pause status displays a countdown and disappears at expiry", () => {
@@ -176,10 +346,10 @@ test("rollover archives yesterday and starts a clean local day", () => {
   assert.deepEqual(current.gridData, []);
   assert.equal(current.notes, "");
   assert.equal(current.startTime, "");
-  assert.equal(current.timerState.isRunning, false);
-  assert.equal(current.timerState.timeRemaining, 900);
-  assert.equal(current.timerState.currentInterval, 0);
-  assert.equal(elements.dateInput.value, "2026-10-15");
+  assert.equal(current.timerState.isRunning, true);
+  assert.equal(current.timerState.timeRemaining, 123);
+  assert.equal(current.timerState.currentInterval, 12);
+  assert.equal(elements.dateDisplay.textContent, "2026-10-15");
   assert.equal(tracker.rolloverDailySession(new Date(2026, 9, 15, 13)), false);
 });
 
@@ -253,7 +423,7 @@ test("restoring an old cloud response cannot change today's session or date fiel
     /different day/,
   );
   assert.equal(tracker.date, "2026-10-15");
-  assert.equal(elements.dateInput.value, "2026-10-15");
+  assert.equal(elements.dateDisplay.textContent, "2026-10-15");
   assert.equal(tracker.sessionId, "yesterday");
   assert.deepEqual(tracker.tasks, ["Task"]);
 });
@@ -267,6 +437,6 @@ test("restoring today's cloud session populates today's date", () => {
     tasks: [],
   });
   assert.equal(tracker.date, "2026-10-15");
-  assert.equal(elements.dateInput.value, "2026-10-15");
+  assert.equal(elements.dateDisplay.textContent, "2026-10-15");
   assert.equal(tracker.sessionId, "today");
 });

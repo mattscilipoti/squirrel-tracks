@@ -1,6 +1,21 @@
 const TimeCalculations = {
   intervalCount: 96,
 
+  reminderTick(now, nextReminderAt, intervalSeconds) {
+    const intervalMilliseconds = intervalSeconds * 1000;
+    const elapsedIntervals =
+      now < nextReminderAt
+        ? 0
+        : Math.floor((now - nextReminderAt) / intervalMilliseconds) + 1;
+    const nextDeadline =
+      nextReminderAt + elapsedIntervals * intervalMilliseconds;
+    return {
+      nextReminderAt: nextDeadline,
+      timeRemaining: Math.ceil((nextDeadline - now) / 1000),
+      elapsedIntervals,
+    };
+  },
+
   centeredScrollLeft(timeOffset, viewportWidth, stickyWidth, scrollWidth) {
     const target = timeOffset - (viewportWidth + stickyWidth) / 2;
     return Math.max(0, Math.min(target, scrollWidth - viewportWidth));
