@@ -258,6 +258,16 @@ A: $0 for development, ~$5/month for small-scale production on Railway.
 - [SwiftUI Documentation](https://developer.apple.com/swiftui/)
 - [Realm Swift Documentation](https://www.mongodb.com/docs/realm/sdk/swift/)
 
+### ETT
+
+- https://davidseah.com/2013/06/the-emergent-task-timer-revised-for-2013/
+- https://clintonbegin.blogspot.ca/2012/09/emergent-task-timing.html
+- example paper form, Revision 3a [ETT03-PROTO-0D6D2.pdf](http://davidseah.com/pub/downloads/pceo/ett/ETT03-PROTO-0D6D2.pdf)
+
+### PWA
+
+- tutorial: https://developers.google.com/web/fundamentals/codelabs/your-first-pwapp/
+
 ---
 
 ## 📝 License
