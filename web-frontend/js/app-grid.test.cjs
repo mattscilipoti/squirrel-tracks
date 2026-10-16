@@ -51,6 +51,7 @@ function fixture(date = "2026-10-14", options = {}) {
     console,
     clearInterval,
     Date: FixedDate,
+    window: { setTimeout() {} },
     hasSupabaseConfig: () => options.configured !== false,
     confirm: options.confirm || (() => true),
     alert: (message) => alerts.push(message),
@@ -93,6 +94,102 @@ function fixture(date = "2026-10-14", options = {}) {
   });
   return { tracker, storage, elements, container, alerts };
 }
+
+test("reusing a task attaches the same ID and starts with empty bubbles for the new day", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.taskCatalog = [{ id: 5, name: "Task", interval_count: 10 }];
+  const attachments = [];
+  tracker.db = {
+    attachTask: async (session, id) => attachments.push({ session, id }),
+  };
+  tracker.renderGrid = () => {};
+  tracker.updateTaskCount = () => {};
+  tracker.updateSummary = () => {};
+  await tracker.reuseTask(5);
+  assert.deepEqual(attachments, [{ session: "yesterday", id: 5 }]);
+  assert.equal(tracker.tasks.length, 2);
+  assert.equal(tracker.tasks[0], tracker.tasks[1]);
+  assert.equal(tracker.getTaskId(0), "task-id");
+  assert.equal(tracker.getTaskId(1), 5);
+  assert.equal(tracker.gridData[1].filter(Boolean).length, 0);
+  await tracker.reuseTask(5);
+  assert.equal(tracker.tasks.length, 2);
+  assert.equal(attachments.length, 1);
+});
+
+test("global rename updates cached days by ID without changing other task names", async () => {
+  const { tracker, storage } = fixture("2026-10-15");
+  tracker.tasks = ["Task", "Other"];
+  tracker.taskIds = [5, 6];
+  tracker.gridData = [[true], [true, true]];
+  tracker.taskCatalog = [
+    { id: 5, name: "Task" },
+    { id: 6, name: "Other" },
+  ];
+  storage.set(
+    "ettGridHistory",
+    JSON.stringify({
+      past: {
+        date: "2026-10-14",
+        sessionId: 14,
+        tasks: ["Task", "Other"],
+        taskIds: [5, 6],
+        gridData: [[true], [true, true]],
+      },
+    }),
+  );
+  tracker.db = { updateTask: async (session, id) => assert.equal(id, 5) };
+  tracker.renderGrid = () => {};
+  tracker.updateSummary = () => {};
+  await tracker.renameTask(0, "Renamed Task");
+  const past = JSON.parse(storage.get("ettGridHistory")).past;
+  assert.deepEqual(past.tasks, ["Renamed Task", "Other"]);
+  assert.deepEqual(past.taskIds, [5, 6]);
+  assert.deepEqual(past.gridData, [[true], [true, true]]);
+  assert.equal(tracker.getTaskId(0), 5);
+  assert.equal(tracker.getTaskId(1), 6);
+});
+
+test("removing a reusable task detaches only the current session and retains its catalog entry", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.taskIds = [5];
+  tracker.taskCatalog = [{ id: 5, name: "Task", interval_count: 10 }];
+  const removals = [];
+  tracker.db = {
+    deleteTask: async (session, id) => removals.push({ session, id }),
+  };
+  for (const method of ["renderGrid", "updateTaskCount", "updateSummary"])
+    tracker[method] = () => {};
+  tracker.removeTask(0);
+  await tracker.waitForPendingWrites();
+  assert.deepEqual(removals, [{ session: "yesterday", id: 5 }]);
+  assert.equal(tracker.tasks.length, 0);
+  assert.equal(tracker.taskCatalog[0].id, 5);
+});
+
+test("full sync attaches equal-named tasks by distinct IDs rather than matching names", async () => {
+  const { tracker, container } = fixture("2026-10-15");
+  tracker.tasks = ["Same", "Same"];
+  tracker.taskIds = [10, 11];
+  tracker.gridData = [new Array(96).fill(false), new Array(96).fill(false)];
+  const attachments = [];
+  tracker.db = {
+    updateSession: async () => {},
+    getSession: async () => ({
+      id: "yesterday",
+      date: "2026-10-15",
+      tasks: [],
+    }),
+    attachTask: async (session, id) => attachments.push(id),
+    getSessionIntervals: async () => [],
+    createTask: async () =>
+      assert.fail("Created a copy instead of reusing the ID"),
+  };
+  tracker.loadSessionFromSupabase = async () => {};
+  await tracker.syncAndReloadFromSupabase();
+  assert.deepEqual(attachments, [10, 11]);
+  assert.equal(container.inert, false);
+});
 
 test("non-today dates show an explicit warning and highlight; today clears them", () => {
   const { tracker, elements } = fixture("2026-10-15");
@@ -273,11 +370,57 @@ test("renaming keeps the task ID and bubbles and saves the cloud name", async ()
   assert.equal(container.inert, false);
 });
 
-test("rename rejects blank and duplicate names without changing data", async () => {
+test("new tasks reject existing names ignoring case and surrounding spaces", () => {
+  const { tracker } = fixture();
+  tracker.taskCatalog = [{ id: 10, name: "Writing" }];
+  assert.throws(() => tracker.addTask(" writing "), /Reuse a task/);
+  assert.equal(tracker.tasks.length, 1);
+  assert.equal(tracker.gridData.length, 1);
+});
+
+test("database duplicate-name race rolls back the optimistic local task", async () => {
+  const { tracker, storage, alerts } = fixture("2026-10-15");
+  tracker.sessionId = 15;
+  tracker.taskCatalog = [{ id: 5, name: "Existing task" }];
+  tracker.renderGrid = () => {};
+  tracker.updateTaskCount = () => {};
+  tracker.updateSummary = () => {};
+  tracker.db = {
+    createTask: async () => {
+      throw new Error(
+        "Task name already exists; reuse the existing task instead.",
+      );
+    },
+  };
+  tracker.addTask("New task");
+  await [...tracker.pendingWrites][0];
+  assert.deepEqual(tracker.tasks, ["Task"]);
+  assert.equal(tracker.gridData.length, 1);
+  assert.equal(JSON.parse(storage.get("ettGridState")).tasks[0], "Task");
+  assert.match(alerts[0], /Reuse a task/);
+});
+
+test("renaming rejects a different existing task name but allows case-only self rename", async () => {
+  const { tracker } = fixture();
+  tracker.taskIds = [10];
+  tracker.taskCatalog = [
+    { id: 10, name: "Writing" },
+    { id: 11, name: "Planning" },
+  ];
+  tracker.db = { updateTask: async () => {} };
+  tracker.renderGrid = () => {};
+  tracker.updateSummary = () => {};
+  await assert.rejects(tracker.renameTask(0, " planning "), /Reuse a task/);
+  assert.equal(tracker.tasks[0], "Task");
+  tracker.taskCatalog = [{ id: 10, name: "Writing" }];
+  await tracker.renameTask(0, "WRITING");
+  assert.equal(tracker.tasks[0], "WRITING");
+});
+
+test("rename rejects blank names without changing data", async () => {
   const { tracker } = fixture();
   tracker.tasks.push("Other");
   await assert.rejects(tracker.renameTask(0, "  "), /Enter a task name/);
-  await assert.rejects(tracker.renameTask(0, "Other"), /already has this name/);
   assert.equal(tracker.tasks[0], "Task");
 });
 
@@ -544,7 +687,7 @@ test("header summaries update from bubbles while current slot stays clock-based"
   assert.equal(elements.firstActivityDisplay.textContent, "09:00");
   assert.equal(elements.lastActivityDisplay.textContent, "10:15");
   assert.equal(elements.sessionSpanDisplay.textContent, "1h 15m");
-  assert.equal(elements.trackedTimeDisplay.textContent, "0h 30m");
+  assert.equal(elements.trackedTimeDisplay.textContent, "0h 45m");
   assert.equal(elements.currentSlotDisplay.textContent, "53 / 96");
   tracker.saveToLocalStorage();
   assert.equal(JSON.parse(storage.get("ettGridState")).startTime, "09:00");

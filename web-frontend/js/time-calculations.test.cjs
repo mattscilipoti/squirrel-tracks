@@ -2,6 +2,62 @@ const assert = require("node:assert/strict");
 const { describe, test } = require("node:test");
 const TimeCalculations = require("./time-calculations.js");
 
+test("all-days totals add other sessions to live day counts without counting the selected session twice", () => {
+  const totals = [
+    { session_id: 1, task_id: 5, interval_count: "4" },
+    { session_id: 2, task_id: 5, interval_count: "2" },
+    { session_id: 1, task_id: 6, interval_count: "50" },
+  ];
+  assert.equal(TimeCalculations.taskIntervalTotal(5, "2", 3, totals), 7);
+  assert.equal(TimeCalculations.taskIntervalTotal(6, "2", 1, totals), 51);
+  const snapshots = [
+    { sessionId: 1, taskIds: [5], gridData: [new Array(6).fill(true)] },
+  ];
+  assert.equal(
+    TimeCalculations.taskIntervalTotal(5, "2", 3, totals, snapshots),
+    9,
+  );
+  assert.equal(
+    TimeCalculations.taskIntervalTotal(5, "2", 3, totals, [
+      { sessionId: 1, tasks: [], gridData: [] },
+    ]),
+    7,
+  );
+});
+
+test("local reusable IDs accumulate across dates while different IDs remain distinct", () => {
+  const snapshots = [
+    {
+      date: "2026-10-15",
+      taskIds: ["local:shared", "local:other"],
+      gridData: [
+        [true, true],
+        [true, true, true],
+      ],
+    },
+  ];
+  assert.equal(
+    TimeCalculations.taskIntervalTotal(
+      "local:shared",
+      "local:2026-10-16",
+      1,
+      [],
+      snapshots,
+    ),
+    3,
+  );
+  assert.equal(
+    TimeCalculations.taskIntervalTotal(
+      "local:other",
+      "local:2026-10-16",
+      0,
+      [],
+      snapshots,
+    ),
+    3,
+  );
+});
+
 test("reminder repeats at the boundary rather than stopping at zero", () => {
   assert.deepEqual(TimeCalculations.reminderTick(899001, 900000, 900), {
     nextReminderAt: 900000,
@@ -40,7 +96,7 @@ test("empty grids have no activity summaries", () => {
   }
 });
 
-test("activity span includes gaps while tracked time deduplicates overlapping tasks", () => {
+test("activity span includes gaps and tracked time sums task bubbles without overlap compensation", () => {
   const first = new Array(96).fill(false);
   const second = new Array(96).fill(false);
   first[36] = true;
@@ -51,8 +107,8 @@ test("activity span includes gaps while tracked time deduplicates overlapping ta
     firstActivity: "09:00",
     lastActivity: "10:15",
     sessionSpan: "1h 15m",
-    trackedTime: "0h 30m",
-    trackedMinutes: 30,
+    trackedTime: "0h 45m",
+    trackedMinutes: 45,
   });
   assert.equal(JSON.stringify([first, second]), original);
 });

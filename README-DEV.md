@@ -179,14 +179,30 @@ available scroll range.
 The header summarizes filled bubbles rather than an editable work window.
 First Activity is the earliest filled slot's start; Last Activity is the latest
 filled slot's end (shown as `24:00` for the final slot). Session Span includes
-gaps between those boundaries. Tracked Time counts distinct filled slots once,
-even when several tasks share a slot; per-task totals still count each task's
-bubbles. Empty activity summaries show `--`. Current Slot follows the local
+gaps between those boundaries. Tracked Time sums task bubbles directly without
+overlap compensation. Empty activity summaries show `--`. Current Slot follows the local
 clock from slot 1 at midnight to slot 96 at 23:45, independently of activity.
 Current Slot and the current-time line are hidden when viewing another date.
 The existing saved `start_time` field now reflects First Activity, and CSV
 metadata includes all four activity summaries. No schema migration is needed
 for this header change.
+
+Reusable tasks require `20261016000000_reusable_tasks.sql`. Global tasks are linked
+to sessions through `session_tasks`; intervals reference that membership. Day
+removal cascades only that day's intervals, and anonymous clients cannot delete
+the global task. `task_totals` and `task_day_totals` are security-invoker views.
+The browser keeps row IDs separately from display names, preserving duplicate
+names already present in the database as distinct tasks. New names are checked
+case-insensitively and the database trigger rejects concurrent duplicates.
+Catalog and day counts are paginated; all-days totals combine other sessions
+with live selected-day edits and local snapshots.
+Renaming updates the global task and cached appearances by ID. No name-based
+merge or duplicate-management UI is provided.
+
+Apply `20261016000001_prevent_duplicate_task_names.sql` afterward to reject new
+case-insensitive duplicate names in Supabase. Existing duplicate IDs are kept
+separate and visible as distinct ID-labelled choices for reuse; clean them up
+only through a separate admin workflow.
 
 ### JavaScript Tests
 
@@ -203,6 +219,8 @@ and current-time line positions in Eastern, UTC, and India timezones. Session
 tests cover daily rollover, local archival, same-day reuse, and active-write guards.
 Additional tests cover centering geometry, pause countdowns, resume behavior,
 legacy grid conversion, and late-night intervals.
+Reusable-task tests cover cross-day IDs, independent day links, name uniqueness,
+shared renames, and additive daily/all-days totals.
 
 ---
 

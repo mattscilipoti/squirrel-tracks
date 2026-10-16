@@ -76,9 +76,25 @@ current local grid as authoritative, rather than merging changes from other tabs
 Remove individual task rows with their remove control. Other days' sessions
 are not cleared by these actions.
 
+Create a task with Add, or choose **Reuse a task...** and **Add existing** to use
+the same task ID on another day. The new day's row starts with empty bubbles.
+New names are checked case-insensitively after trimming; if a name exists, reuse
+it from the picker instead. The picker shows task IDs to distinguish any legacy
+duplicates. Existing duplicates are not merged here; cleanup remains a separate
+admin task.
+
+Summary columns show **Day** time for the selected session and **All days** time
+for the same task ID across sessions. Totals sum the tasks shown. Every filled
+bubble contributes 15 minutes, with no compensation for overlaps. Other-day
+totals use saved cloud counts and available per-session local snapshots, while
+the selected day's total reflects live edits. CSV includes task IDs, daily
+minutes, and all-days minutes. Local-only reusable tasks are browser-specific.
+
 Click a task name in the grid to edit it. Enter or leaving the field saves;
-Escape cancels. Blank names and names already used by another task are rejected.
-Renaming preserves the task's ID, filled bubbles, and summary totals. Local-only
+Escape cancels. Blank names are rejected. Renaming changes the task's name across
+all days, preserving its ID and every day's bubbles. Removing a row detaches it
+from the selected day and removes only that day's bubbles; the reusable task and
+other days' time remain. Local-only
 names are saved in this browser; cloud-backed names are committed locally only
 after Supabase accepts the update. A failed save leaves the old name in place.
 
@@ -87,6 +103,17 @@ Before renaming cloud-backed tasks, apply
 in Supabase after the earlier migrations. It permits updating task names, not
 other task columns, and does not change existing data. The existing anonymous
 access model still does not provide per-user isolation.
+
+Before using reusable tasks with Supabase, close all old app tabs and apply
+[`20261016000000_reusable_tasks.sql`](supabase/migrations/20261016000000_reusable_tasks.sql)
+and [`20261016000001_prevent_duplicate_task_names.sql`](supabase/migrations/20261016000001_prevent_duplicate_task_names.sql)
+after the earlier migrations, then hard-refresh the app. The duplicate guard
+does not merge existing duplicate names; new or renamed tasks cannot collide.
+The reusable-task migration replaces
+single-day task ownership with `session_tasks` links and adds RLS-aware task
+totals views. Existing IDs, names, day associations, and bubbles are preserved;
+no existing tasks are merged. Do not run the old frontend against the new schema
+or use the expanded frontend with an unmigrated database.
 
 **Refresh from DB** is the recovery action when local data is stale or the wrong
 session is selected. It prefers the current session if it has saved tasks or
