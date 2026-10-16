@@ -787,8 +787,8 @@ header a:hover {
   white-space: nowrap;
 }
 
-.summary-table .summary-totals th,
-.summary-table .summary-totals td {
+.summary-table .summary-header th,
+.summary-table .summary-header td {
   font-weight: 700;
   background-color: #eee;
   border-bottom: 2px solid #bbb;
