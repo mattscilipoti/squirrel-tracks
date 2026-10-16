@@ -624,22 +624,9 @@ class GridTaskTracker {
     this.tasks.forEach((taskName, taskIdx) => {
       const row = document.createElement("tr");
 
-      // Task name cell with checkboxes and remove button
       const taskCell = document.createElement("td");
       taskCell.className = "task-name-cell";
 
-      // 3 checkboxes for task status
-      const checkboxes = document.createElement("span");
-      checkboxes.className = "task-checkboxes";
-      for (let i = 0; i < 3; i++) {
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.className = "task-checkbox";
-        checkbox.title = `Status ${i + 1}`;
-        checkboxes.appendChild(checkbox);
-      }
-
-      taskCell.appendChild(checkboxes);
       const nameButton = document.createElement("button");
       nameButton.type = "button";
       nameButton.className = "task-name-button";
