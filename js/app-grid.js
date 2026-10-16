@@ -12,6 +12,7 @@ class GridTaskTracker {
     this.startTime = "";
     this.memo = "";
     this.date = TimeCalculations.localDate(new Date());
+    this.followToday = true;
     this.notes = "";
 
     // Supabase client
@@ -36,7 +37,7 @@ class GridTaskTracker {
     this.loadFromLocalStorage();
     this.rolloverDailySession();
     this.initializeReminder();
-    document.getElementById("dateDisplay").textContent = this.date;
+    this.updateDateControl();
     if (hasSupabaseConfig()) {
       this.sessionInitialization = this.initializeSession();
     }
@@ -152,27 +153,25 @@ class GridTaskTracker {
   /**
    * Restore session data from Supabase
    */
-  restoreSessionData(session) {
-    const today = TimeCalculations.localDate(new Date());
-    if (session.date !== today) {
+  restoreSessionData(session, expectedDate = this.date) {
+    if (session.date !== expectedDate) {
       throw new Error(
-        "Cannot restore a session from a different day into today's tracker.",
+        "Cannot restore a session from a different day into the selected date.",
       );
     }
 
     this.sessionId = session.id;
     this.startTime = session.start_time || "";
     this.memo = session.memo || "";
-    this.date = today;
+    this.date = expectedDate;
     this.notes = session.notes || "";
 
     // Update form fields
     const memoInput = document.getElementById("memoInput");
-    const dateDisplay = document.getElementById("dateDisplay");
     const notesInput = document.getElementById("notesInput");
 
     if (memoInput) memoInput.value = this.memo;
-    if (dateDisplay) dateDisplay.textContent = this.date;
+    this.updateDateControl();
     if (notesInput) notesInput.value = this.notes;
 
     const sessionTasks = session.tasks || [];
@@ -186,9 +185,9 @@ class GridTaskTracker {
     );
   }
 
-  async loadSessionFromSupabase(session) {
+  async loadSessionFromSupabase(session, expectedDate = this.date) {
     const intervals = await this.db.getSessionIntervals(session.id);
-    this.restoreSessionData(session);
+    this.restoreSessionData(session, expectedDate);
     const taskIndexById = new Map(
       this.tasks.map((taskName, index) => [
         String(this.taskIdMap[taskName]),
@@ -216,6 +215,12 @@ class GridTaskTracker {
   }
 
   initializeUI() {
+    document.getElementById("dateInput").addEventListener("change", (event) => {
+      this.changeSessionDate(event.target.value);
+    });
+    document.getElementById("todayBtn").addEventListener("click", () => {
+      this.changeSessionDate(TimeCalculations.localDate(new Date()));
+    });
     this.initializeGridHeader();
     const container = document.querySelector(".grid-container");
     container.tabIndex = 0;
@@ -499,8 +504,95 @@ class GridTaskTracker {
     }
     this.updateCurrentTimeLine(now);
     this.updateActivitySummary();
+    this.updateDateControl(now);
     document.getElementById("currentSlotDisplay").textContent =
-      `${TimeCalculations.currentSlot(now)} / ${TimeCalculations.intervalCount}`;
+      this.date === TimeCalculations.localDate(now)
+        ? `${TimeCalculations.currentSlot(now)} / ${TimeCalculations.intervalCount}`
+        : "--";
+  }
+
+  updateDateControl(now = new Date()) {
+    const otherDay = this.date !== TimeCalculations.localDate(now);
+    const input = document.getElementById("dateInput");
+    input.value = this.date;
+    input.classList.toggle("is-other-day", otherDay);
+    const warning = document.getElementById("dateWarning");
+    warning.textContent = otherDay ? `Not today: editing ${this.date}` : "";
+    warning.hidden = !otherDay;
+    document.getElementById("todayBtn").hidden = !otherDay;
+  }
+
+  async changeSessionDate(date) {
+    this.updateDateControl();
+    if (date === this.date) return true;
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      TimeCalculations.localDate(new Date(`${date}T00:00:00`)) !== date
+    )
+      return false;
+    if (this.isFullSyncing || this.isSyncing || this.isInitializingSession) {
+      alert("Wait for the current sync to finish before changing days.");
+      return false;
+    }
+    const container = document.querySelector(".container");
+    const wasInert = container.inert;
+    this.isFullSyncing = true;
+    container.inert = true;
+    let previousState;
+    try {
+      await this.waitForPendingWrites();
+      this.saveToLocalStorage();
+      previousState = localStorage.getItem("ettGridState");
+      const history = JSON.parse(
+        localStorage.getItem("ettGridHistory") || "{}",
+      );
+      history[`${this.date}:${this.sessionId || "local"}`] =
+        JSON.parse(previousState);
+      localStorage.setItem("ettGridHistory", JSON.stringify(history));
+      const cached = this.selectCloudSession(
+        Object.values(history)
+          .reverse()
+          .filter((state) => state.date === date),
+      );
+      if (cached) {
+        this.loadFromLocalStorage(JSON.stringify(cached));
+      } else if (hasSupabaseConfig()) {
+        const sessions = await this.db.getSessionsForDate(date);
+        const session = this.selectCloudSession(sessions);
+        if (session) {
+          await this.loadSessionFromSupabase(session, date);
+        } else {
+          const result = await this.db.createSession({
+            status: "active",
+            date,
+          });
+          const created = result?.[0] || result;
+          if (!created?.id)
+            throw new Error("Could not create a session for this day.");
+          this.restoreSessionData({ ...created, date, tasks: [] }, date);
+        }
+      } else {
+        this.restoreSessionData({ id: null, date, tasks: [] }, date);
+      }
+      this.followToday = date === TimeCalculations.localDate(new Date());
+      this.lastSyncTime = null;
+      this.renderGrid();
+      this.updateTaskCount();
+      this.updateSummary();
+      this.updateTimeCalculations();
+      this.saveToLocalStorage();
+      return true;
+    } catch (error) {
+      if (previousState) this.loadFromLocalStorage(previousState);
+      this.updateDateControl();
+      alert(
+        `Could not change days: ${error.message || "Unknown error"}. The previous session was kept.`,
+      );
+      return false;
+    } finally {
+      this.isFullSyncing = false;
+      container.inert = wasInert;
+    }
   }
 
   updateActivitySummary() {
@@ -573,6 +665,10 @@ class GridTaskTracker {
 
   updateCurrentTimeLine(now = new Date(), autoCenter = true) {
     const line = document.getElementById("currentTimeLine");
+    if (this.date !== TimeCalculations.localDate(now)) {
+      line.hidden = true;
+      return;
+    }
     const table = document.getElementById("timeGrid");
     const container = table.parentElement;
     const body = table.tBodies[0];
@@ -743,16 +839,16 @@ class GridTaskTracker {
     try {
       if (this.sessionInitialization) await this.sessionInitialization;
       await this.waitForPendingWrites();
-      const today = TimeCalculations.localDate(new Date());
-      const sessions = await this.db.getSessionsForDate(today);
+      const selectedDate = this.date;
+      const sessions = await this.db.getSessionsForDate(selectedDate);
       if (!sessions.length)
         throw new Error(
-          "No saved session was found for today. Local data was kept.",
+          "No saved session was found for the selected date. Local data was kept.",
         );
       const session = this.selectCloudSession(sessions);
       if (
         !confirm(
-          `Load cloud session ${session.id} for ${today} (${session.tasks?.length || 0} tasks, ${session.intervals?.length || 0} bubbles)?\n\nThis replaces local tasks, bubbles, memo, and notes without uploading local changes. Changes already synced cannot be undone. Other cloud sessions will not be modified.`,
+          `Load cloud session ${session.id} for ${selectedDate} (${session.tasks?.length || 0} tasks, ${session.intervals?.length || 0} bubbles)?\n\nThis replaces local tasks, bubbles, memo, and notes without uploading local changes. Changes already synced cannot be undone. Other cloud sessions will not be modified.`,
         )
       )
         return;
@@ -1221,6 +1317,7 @@ class GridTaskTracker {
   rolloverDailySession(now = new Date()) {
     const today = TimeCalculations.localDate(now);
     if (
+      this.followToday === false ||
       this.date === today ||
       this.isInitializingSession ||
       this.isSyncing ||
@@ -1247,7 +1344,7 @@ class GridTaskTracker {
     for (const field of ["memoInput", "notesInput"]) {
       document.getElementById(field).value = "";
     }
-    document.getElementById("dateDisplay").textContent = today;
+    this.updateDateControl(now);
     this.saveToLocalStorage();
     return true;
   }
@@ -1265,6 +1362,8 @@ class GridTaskTracker {
       tasks: this.tasks,
       gridData: this.gridData,
       sessionId: this.sessionId,
+      taskIdMap: this.taskIdMap,
+      followToday: this.followToday,
       timerState: this.timerState,
       startTime: this.startTime,
       memo: this.memo,
@@ -1278,7 +1377,10 @@ class GridTaskTracker {
    * Sync session metadata to Supabase
    */
   async syncToSupabase() {
-    if (this.date !== TimeCalculations.localDate(new Date())) {
+    if (
+      this.followToday !== false &&
+      this.date !== TimeCalculations.localDate(new Date())
+    ) {
       this.updateTimeCalculations();
       return;
     }
@@ -1318,8 +1420,7 @@ class GridTaskTracker {
   /**
    * Load state from localStorage
    */
-  loadFromLocalStorage() {
-    const saved = localStorage.getItem("ettGridState");
+  loadFromLocalStorage(saved = localStorage.getItem("ettGridState")) {
     if (saved) {
       try {
         const state = JSON.parse(saved);
@@ -1328,6 +1429,8 @@ class GridTaskTracker {
           TimeCalculations.normalizeGridRow(row),
         );
         this.sessionId = state.sessionId;
+        this.taskIdMap = state.taskIdMap || {};
+        this.followToday = state.followToday !== false;
         this.startTime = state.startTime || "";
         this.memo = state.memo || "";
         this.date = state.date || TimeCalculations.localDate(new Date());
@@ -1335,11 +1438,10 @@ class GridTaskTracker {
 
         // Restore form fields
         const memoInput = document.getElementById("memoInput");
-        const dateDisplay = document.getElementById("dateDisplay");
         const notesInput = document.getElementById("notesInput");
 
         if (memoInput) memoInput.value = this.memo;
-        if (dateDisplay) dateDisplay.textContent = this.date;
+        this.updateDateControl();
         if (notesInput) notesInput.value = this.notes;
 
         // Initialize grid data for tasks if not present

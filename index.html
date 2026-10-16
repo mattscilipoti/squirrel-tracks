@@ -70,15 +70,31 @@
           </p>
         </div>
         <div class="header-form">
-          <label>
-            DATE:
+          <div class="session-date-control">
+            <label for="dateInput">DATE:</label>
+            <input
+              type="date"
+              id="dateInput"
+              class="form-input-small"
+              aria-describedby="dateWarning"
+              title="Load the session for this date"
+            />
             <span
-              class="form-value"
-              id="dateDisplay"
-              title="Current local session date"
-              >--</span
+              id="dateWarning"
+              class="date-warning"
+              role="status"
+              hidden
+            ></span>
+            <button
+              id="todayBtn"
+              class="btn-small"
+              type="button"
+              title="Return to today's session"
+              hidden
             >
-          </label>
+              Today
+            </button>
+          </div>
           <label>
             TASKS: <span class="form-value" id="tasksValue">0</span>
           </label>
@@ -130,7 +146,7 @@
             <button
               id="addTaskBtn"
               class="btn btn-primary btn-small"
-              title="Add a task row to today's session."
+              title="Add a task row to the selected day's session."
             >
               Add
             </button>
@@ -173,7 +189,7 @@
                 <button
                   id="refreshDbBtn"
                   class="btn btn-secondary"
-                  title="Load today's saved session from Supabase without uploading local changes. Confirmation is required before replacing local tasks, bubbles, memo, and notes."
+                  title="Load the selected day's session from Supabase without uploading local changes. Confirmation is required before replacing local tasks, bubbles, memo, and notes."
                 >
                   Refresh from DB
                 </button>

@@ -8,13 +8,26 @@ function fixture(date = "2026-10-14", options = {}) {
   const storage = new Map();
   const container = { inert: false };
   const alerts = [];
+  const dateClasses = new Set();
   const elements = Object.fromEntries([
     ["firstActivityDisplay", {}],
     ["lastActivityDisplay", {}],
     ["sessionSpanDisplay", {}],
     ["trackedTimeDisplay", {}],
     ["currentSlotDisplay", {}],
-    ["dateDisplay", { textContent: date }],
+    [
+      "dateInput",
+      {
+        value: date,
+        classList: {
+          toggle: (name, enabled) =>
+            enabled ? dateClasses.add(name) : dateClasses.delete(name),
+          contains: (name) => dateClasses.has(name),
+        },
+      },
+    ],
+    ["dateWarning", {}],
+    ["todayBtn", {}],
     ["memoInput", { value: "Yesterday's memo" }],
     ["notesInput", { value: "Yesterday's notes" }],
     ["timerDisplay", {}],
@@ -38,7 +51,7 @@ function fixture(date = "2026-10-14", options = {}) {
     console,
     clearInterval,
     Date: FixedDate,
-    hasSupabaseConfig: () => true,
+    hasSupabaseConfig: () => options.configured !== false,
     confirm: options.confirm || (() => true),
     alert: (message) => alerts.push(message),
     document: {
@@ -80,6 +93,160 @@ function fixture(date = "2026-10-14", options = {}) {
   });
   return { tracker, storage, elements, container, alerts };
 }
+
+test("non-today dates show an explicit warning and highlight; today clears them", () => {
+  const { tracker, elements } = fixture("2026-10-15");
+  for (const date of ["2026-10-14", "2026-10-16"]) {
+    tracker.date = date;
+    tracker.updateDateControl(new Date(2026, 9, 15, 13));
+    assert.equal(elements.dateInput.value, date);
+    assert.equal(elements.dateInput.classList.contains("is-other-day"), true);
+    assert.equal(elements.dateWarning.hidden, false);
+    assert.equal(
+      elements.dateWarning.textContent,
+      `Not today: editing ${date}`,
+    );
+    assert.equal(elements.todayBtn.hidden, false);
+  }
+  tracker.date = "2026-10-15";
+  tracker.updateDateControl(new Date(2026, 9, 15, 13));
+  assert.equal(elements.dateInput.classList.contains("is-other-day"), false);
+  assert.equal(elements.dateWarning.hidden, true);
+  assert.equal(elements.todayBtn.hidden, true);
+});
+
+test("switching days loads the cloud session and returning restores the local day snapshot", async () => {
+  const { tracker, storage, elements, container } = fixture("2026-10-15");
+  tracker.db = {
+    getSessionsForDate: async (date) => {
+      assert.equal(date, "2026-10-14");
+      return [
+        {
+          id: 14,
+          date,
+          memo: "Past focus",
+          notes: "Past notes",
+          tasks: [{ id: 140, name: "Past task" }],
+        },
+      ];
+    },
+    getSessionIntervals: async () => [{ task_id: 140, interval_index: 40 }],
+    updateSession: async () =>
+      assert.fail("Relabeled a cloud session during date selection"),
+  };
+  for (const method of [
+    "renderGrid",
+    "updateTaskCount",
+    "updateSummary",
+    "updateTimeCalculations",
+  ])
+    tracker[method] = () => {};
+  assert.equal(await tracker.changeSessionDate("2026-10-14"), true);
+  assert.equal(tracker.sessionId, 14);
+  assert.equal(tracker.date, "2026-10-14");
+  assert.equal(tracker.followToday, false);
+  assert.equal(tracker.gridData[0][40], true);
+  assert.equal(elements.dateWarning.hidden, false);
+  const history = JSON.parse(storage.get("ettGridHistory"));
+  assert.equal(history["2026-10-15:yesterday"].notes, "Yesterday's notes");
+  assert.equal(await tracker.changeSessionDate("2026-10-15"), true);
+  assert.equal(tracker.sessionId, "yesterday");
+  assert.equal(tracker.tasks[0], "Task");
+  assert.equal(tracker.taskIdMap.Task, "task-id");
+  assert.equal(tracker.gridData[0][0], true);
+  assert.equal(tracker.followToday, true);
+  assert.equal(elements.notesInput.value, "Yesterday's notes");
+  assert.equal(elements.dateWarning.hidden, true);
+  assert.equal(container.inert, false);
+});
+
+test("failed day lookup preserves the previous session and resets the picker", async () => {
+  const { tracker, elements, container, alerts } = fixture("2026-10-15");
+  tracker.db = {
+    getSessionsForDate: async () => {
+      throw new Error("Offline");
+    },
+  };
+  elements.dateInput.value = "2026-10-14";
+  assert.equal(await tracker.changeSessionDate("2026-10-14"), false);
+  assert.equal(tracker.date, "2026-10-15");
+  assert.equal(tracker.sessionId, "yesterday");
+  assert.equal(tracker.tasks[0], "Task");
+  assert.equal(elements.dateInput.value, "2026-10-15");
+  assert.equal(elements.dateWarning.hidden, true);
+  assert.equal(container.inert, false);
+  assert.match(alerts[0], /previous session was kept/);
+});
+
+test("a day without cloud data creates a blank session for that date", async () => {
+  const { tracker, elements } = fixture("2026-10-15");
+  tracker.db = {
+    getSessionsForDate: async () => [],
+    createSession: async (data) => {
+      assert.equal(data.date, "2026-10-16");
+      return { id: 16 };
+    },
+  };
+  for (const method of [
+    "renderGrid",
+    "updateTaskCount",
+    "updateSummary",
+    "updateTimeCalculations",
+  ])
+    tracker[method] = () => {};
+  assert.equal(await tracker.changeSessionDate("2026-10-16"), true);
+  assert.equal(tracker.sessionId, 16);
+  assert.equal(tracker.tasks.length, 0);
+  assert.equal(elements.memoInput.value, "");
+  assert.equal(elements.notesInput.value, "");
+  assert.equal(elements.dateWarning.hidden, false);
+});
+
+test("local-only date navigation keeps per-day state without a cloud connection", async () => {
+  const { tracker, elements } = fixture("2026-10-15", { configured: false });
+  for (const method of [
+    "renderGrid",
+    "updateTaskCount",
+    "updateSummary",
+    "updateTimeCalculations",
+  ])
+    tracker[method] = () => {};
+  assert.equal(await tracker.changeSessionDate("2026-10-14"), true);
+  assert.equal(tracker.sessionId, null);
+  assert.equal(tracker.tasks.length, 0);
+  assert.equal(elements.dateWarning.hidden, false);
+  assert.equal(await tracker.changeSessionDate("2026-10-15"), true);
+  assert.equal(tracker.tasks[0], "Task");
+});
+
+test("historical session metadata syncs under its own date without rollover", async () => {
+  const { tracker } = fixture("2026-10-14");
+  tracker.followToday = false;
+  const updates = [];
+  tracker.db = {
+    updateSession: async (id, data) => updates.push({ id, date: data.date }),
+  };
+  await tracker.syncToSupabase();
+  assert.deepEqual(updates, [{ id: "yesterday", date: "2026-10-14" }]);
+  assert.equal(tracker.date, "2026-10-14");
+});
+
+test("a reloaded historical selection retains its rollover preference", () => {
+  const { tracker, storage, elements } = fixture("2026-10-15");
+  storage.set(
+    "ettGridState",
+    JSON.stringify({
+      date: "2026-10-14",
+      followToday: false,
+      tasks: [],
+      gridData: [],
+    }),
+  );
+  tracker.loadFromLocalStorage();
+  assert.equal(tracker.followToday, false);
+  assert.equal(tracker.rolloverDailySession(new Date(2026, 9, 15, 13)), false);
+  assert.equal(elements.dateWarning.hidden, false);
+});
 
 test("renaming keeps the task ID and bubbles and saves the cloud name", async () => {
   const { tracker, storage, container } = fixture("2026-10-15");
@@ -393,7 +560,7 @@ test("header summaries update from bubbles while current slot stays clock-based"
 
 test("saving and syncing use the session date rather than display text", async () => {
   const { tracker, elements, storage } = fixture("2026-10-15");
-  elements.dateDisplay.textContent = "2026-10-14";
+  elements.dateInput.value = "2026-10-14";
   tracker.saveToLocalStorage();
   assert.equal(tracker.date, "2026-10-15");
   assert.equal(JSON.parse(storage.get("ettGridState")).date, "2026-10-15");
@@ -496,8 +663,30 @@ test("rollover archives yesterday and starts a clean local day", () => {
   assert.equal(current.timerState.isRunning, true);
   assert.equal(current.timerState.timeRemaining, 123);
   assert.equal(current.timerState.currentInterval, 12);
-  assert.equal(elements.dateDisplay.textContent, "2026-10-15");
+  assert.equal(elements.dateInput.value, "2026-10-15");
   assert.equal(tracker.rolloverDailySession(new Date(2026, 9, 15, 13)), false);
+});
+
+test("an explicitly selected historical day is not rolled over to today", () => {
+  const { tracker, storage } = fixture("2026-10-14");
+  tracker.followToday = false;
+  assert.equal(tracker.rolloverDailySession(new Date(2026, 9, 15, 13)), false);
+  assert.equal(tracker.date, "2026-10-14");
+  assert.equal(storage.size, 0);
+});
+
+test("restoring the selected historical date keeps its date and data", () => {
+  const { tracker, elements } = fixture("2026-10-14");
+  tracker.restoreSessionData({
+    id: 14,
+    date: "2026-10-14",
+    memo: "Historical memo",
+    tasks: [{ id: 140, name: "Historical task" }],
+  });
+  assert.equal(tracker.date, "2026-10-14");
+  assert.equal(tracker.sessionId, 14);
+  assert.equal(tracker.tasks[0], "Historical task");
+  assert.equal(elements.memoInput.value, "Historical memo");
 });
 
 test("same-day session is left untouched", () => {
@@ -737,7 +926,7 @@ test("restoring an old cloud response cannot change today's session or date fiel
     /different day/,
   );
   assert.equal(tracker.date, "2026-10-15");
-  assert.equal(elements.dateDisplay.textContent, "2026-10-15");
+  assert.equal(elements.dateInput.value, "2026-10-15");
   assert.equal(tracker.sessionId, "yesterday");
   assert.deepEqual(tracker.tasks, ["Task"]);
 });
@@ -751,6 +940,6 @@ test("restoring today's cloud session populates today's date", () => {
     tasks: [],
   });
   assert.equal(tracker.date, "2026-10-15");
-  assert.equal(elements.dateDisplay.textContent, "2026-10-15");
+  assert.equal(elements.dateInput.value, "2026-10-15");
   assert.equal(tracker.sessionId, "today");
 });
