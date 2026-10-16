@@ -973,34 +973,42 @@ class GridTaskTracker {
     const table = document.createElement("table");
     table.className = "summary-table";
     table.setAttribute("aria-label", "Task summary");
-    const headings = table.createTHead().insertRow();
-    for (const text of ["Task", "Intervals", "Time"]) {
-      const heading = document.createElement("th");
-      heading.scope = "col";
-      heading.textContent = text;
-      headings.appendChild(heading);
-    }
+    const head = table.createTHead();
     const body = table.createTBody();
-    const appendRow = (name, intervals, className = "") => {
-      const row = body.insertRow();
+    const appendRow = (
+      section,
+      values,
+      { className = "", columnHeadings = false } = {},
+    ) => {
+      const row = section.insertRow();
       row.className = className;
-      const heading = document.createElement("th");
-      heading.scope = "row";
-      heading.textContent = name;
-      row.appendChild(heading);
-      row.insertCell().textContent = intervals;
+      values.forEach((value, index) => {
+        const isHeading = columnHeadings || index === 0;
+        const cell = document.createElement(isHeading ? "th" : "td");
+        if (isHeading) cell.scope = columnHeadings ? "col" : "row";
+        cell.textContent = value;
+        row.appendChild(cell);
+      });
+      return row;
+    };
+    const taskValues = (name, intervals) => {
       const minutes = intervals * 15;
-      row.insertCell().textContent =
+      const time =
         minutes >= 60
           ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
           : `${minutes}m`;
-      return row;
+      return [name, intervals, time];
     };
-    const totalRow = appendRow("Totals", totalIntervals, "summary-totals");
-    table.tHead.insertBefore(totalRow, headings);
+    const totalRow = appendRow(head, taskValues("Totals", totalIntervals), {
+      className: "summary-header",
+    });
     totalRow.title =
       "Sum of task bubbles; overlapping slots count once per task, unlike Tracked Time.";
-    rows.forEach((row) => appendRow(row.name, row.intervals));
+    appendRow(head, ["Task", "Intervals", "Time"], {
+      className: "summary-header",
+      columnHeadings: true,
+    });
+    rows.forEach((row) => appendRow(body, taskValues(row.name, row.intervals)));
     if (!rows.length) {
       const empty = body.insertRow().insertCell();
       empty.colSpan = 3;
