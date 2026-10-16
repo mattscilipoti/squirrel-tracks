@@ -166,6 +166,30 @@ header .subtitle {
   min-width: 20px;
 }
 
+.session-date-control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+
+#dateInput.is-other-day {
+  border: 2px solid #b45309;
+  background-color: #fff3cd;
+  color: #713f12;
+}
+
+.date-warning {
+  padding: 4px 6px;
+  border-left: 3px solid #b45309;
+  background-color: #fff3cd;
+  color: #713f12;
+  font-size: 0.8rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .audio-enable-button {
   min-height: 36px;
   font-size: 0.85rem;

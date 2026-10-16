@@ -47,24 +47,33 @@ python3 -m http.server 5000  # Open http://localhost:5000
 
 ### Web Grid Actions
 
+Use Date to switch sessions without relabeling the current day's data. Switching
+keeps a per-day local snapshot; revisiting a day restores that snapshot first,
+or loads its Supabase session when no local snapshot exists. A new day without
+saved data starts blank. Failed cloud loads keep the previously selected session.
+Past and future dates show an amber date field and **Not today: editing DATE**
+warning. **Today** returns to the current day and removes the warning. Editing,
+sync, refresh, clearing, and export apply to the selected session. The now-line
+and Current Slot appear only for today. Reminder timing does not change.
+
 Add stays visible beside the task input. Clear Grid, Sync & Reload, Refresh from
 DB, and Export CSV are in the collapsed **Advanced** section in the same toolbar.
 A pipe separates the data-changing controls from Export CSV. Expand Advanced
 to access these actions; existing confirmations and tooltips remain in place.
 
-| Action                | Purpose                                                                                                                                       |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add                   | Add a task row to today's session. Enter in the task field also adds it.                                                                      |
-| Clear Grid            | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes.                                                        |
-| Sync & Reload         | Push the current grid, tasks, and notes to Supabase, then reload the saved session. Requires a connection.                                    |
-| Refresh from DB       | Read today's saved session from Supabase and replace local tasks, bubbles, memo, and notes after confirmation. Does not upload local changes. |
-| Export CSV            | Download task totals and activity summaries for the current session. Works locally.                                                           |
-| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering.                                  |
+| Action                | Purpose                                                                                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add                   | Add a task row to the selected day's session. Enter in the task field also adds it.                                                                |
+| Clear Grid            | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes.                                                             |
+| Sync & Reload         | Push the current grid, tasks, and notes to Supabase, then reload the saved session. Requires a connection.                                         |
+| Refresh from DB       | Read the selected day's session from Supabase and replace local tasks, bubbles, memo, and notes after confirmation. Does not upload local changes. |
+| Export CSV            | Download task totals and activity summaries for the current session. Works locally.                                                                |
+| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering.                                       |
 
 Hover over each action for its tooltip. Clear Grid saves the cleared grid locally;
 use Sync & Reload to apply the clearing to Supabase. Sync & Reload treats the
 current local grid as authoritative, rather than merging changes from other tabs.
-Remove individual task rows with their remove control. Previous daily sessions
+Remove individual task rows with their remove control. Other days' sessions
 are not cleared by these actions.
 
 Click a task name in the grid to edit it. Enter or leaving the field saves;
@@ -81,7 +90,7 @@ access model still does not provide per-user isolation.
 
 **Refresh from DB** is the recovery action when local data is stale or the wrong
 session is selected. It prefers the current session if it has saved tasks or
-bubbles; otherwise it chooses the newest populated session for today, falling
+bubbles; otherwise it chooses the newest populated session for the selected date, falling
 back to an empty session only if no populated one exists. Confirmation shows
 the chosen session ID and task/bubble counts. Other cloud sessions are unchanged.
 The previous local state is saved as `ettGridBeforeRefresh` in localStorage.

@@ -151,16 +151,20 @@ ruby -run -ehttpd . -p5000
 - All buttons functional
 - localStorage persists data (open DevTools → Application → Local Storage)
 
-Sessions roll over to a blank session on a new local day, at startup, on the
+When following today, sessions roll over on a new local day, at startup, on the
 minute refresh, or when returning to the tab. Active writes and syncs finish
 before rollover. Previous cloud sessions remain unchanged; local snapshots are
-retained in `ettGridHistory` in browser localStorage. There is no past-session
-review screen yet. Local history is browser-specific and clearing site data
-removes it.
+retained in `ettGridHistory` in browser localStorage. The Date picker explicitly
+loads a selected day's local snapshot or cloud session. Past/future selections
+remain pinned across minute updates and reloads, with an amber field and a
+"Not today" warning. Today returns to the current day and re-enables rollover.
+Local history is browser-specific and clearing site data removes it. Per-day
+snapshots preserve task ID mappings, bubbles, memo, and notes. The reminder is
+independent of the selected date.
 
 Startup checks Supabase for sessions matching the local session date before
 creating a new one. A populated current session is preferred; an empty or missing
-local session pointer can recover today's newest populated cloud session instead
+local session pointer can recover the selected date's newest populated cloud session instead
 of displaying an empty duplicate. Conflicting nonempty local task data is kept
 until the user confirms Refresh from DB. Failed cloud reads leave local data
 intact and do not create replacement sessions.
@@ -179,6 +183,7 @@ gaps between those boundaries. Tracked Time counts distinct filled slots once,
 even when several tasks share a slot; per-task totals still count each task's
 bubbles. Empty activity summaries show `--`. Current Slot follows the local
 clock from slot 1 at midnight to slot 96 at 23:45, independently of activity.
+Current Slot and the current-time line are hidden when viewing another date.
 The existing saved `start_time` field now reflects First Activity, and CSV
 metadata includes all four activity summaries. No schema migration is needed
 for this header change.
