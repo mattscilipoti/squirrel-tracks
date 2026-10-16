@@ -60,7 +60,13 @@
             See where your day goes and discover your patterns of focus. Add
             tasks and fill a bubble for each 15 minutes spent on them. The
             built-in reminder timer gives a gentle bell at an interval you
-            choose, helping you check in and keep your record up to date.
+            choose, helping you check in and keep your record up to date. Based
+            on
+            <a
+              href="https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/"
+              target="_blank"
+              >David Seah's Emergent Task Timing</a
+            >
           </p>
         </div>
         <div class="header-form">
@@ -73,14 +79,6 @@
               >--</span
             >
           </label>
-          <button
-            id="enableBellBtn"
-            class="btn btn-primary audio-enable-button"
-            type="button"
-            title="Browser audio is not active yet. Click to enable reminder sound and hear a preview at your selected volume. The Bell checkbox controls mute; check device volume if sound is still inaudible."
-          >
-            Enable bell audio
-          </button>
           <label>
             TASKS: <span class="form-value" id="tasksValue">0</span>
           </label>
@@ -117,14 +115,6 @@
             />
           </label>
         </div>
-        <p class="help-text">
-          Based on
-          <a
-            href="https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/"
-            target="_blank"
-            >David Seah's Emergent Task Timing</a
-          >
-        </p>
       </header>
 
       <main>
@@ -147,33 +137,59 @@
           </div>
           <div class="spacer"></div>
           <button
-            id="clearGridBtn"
-            class="btn btn-tertiary"
-            title="Clear this session's bubbles after confirmation; keep tasks and notes. Use Sync &amp; Reload to save the cleared grid to Supabase."
+            id="enableBellBtn"
+            class="btn btn-primary audio-enable-button"
+            type="button"
+            title="Browser audio is not active yet. Click to enable reminder sound and hear a preview at your selected volume. The Bell checkbox controls mute; check device volume if sound is still inaudible."
           >
-            Clear Grid
+            Enable bell audio
           </button>
-          <button
-            id="syncReloadBtn"
-            class="btn btn-secondary"
-            title="Save this grid, tasks, and notes to Supabase, then reload the saved session. Requires a Supabase connection."
-          >
-            Sync &amp; Reload
-          </button>
-          <button
-            id="refreshDbBtn"
-            class="btn btn-secondary"
-            title="Load today's saved session from Supabase without uploading local changes. Confirmation is required before replacing local tasks, bubbles, memo, and notes."
-          >
-            Refresh from DB
-          </button>
-          <button
-            id="exportBtn"
-            class="btn btn-secondary"
-            title="Download this session's task totals and activity summaries as a CSV file."
-          >
-            Export CSV
-          </button>
+          <details class="advanced-actions">
+            <summary
+              title="Show cloud synchronization, grid clearing, and export actions"
+            >
+              Advanced
+            </summary>
+            <div
+              class="advanced-controls"
+              role="group"
+              aria-label="Advanced data actions"
+            >
+              <div class="data-change-actions">
+                <button
+                  id="clearGridBtn"
+                  class="btn btn-tertiary"
+                  title="Clear this session's bubbles after confirmation; keep tasks and notes. Use Sync &amp; Reload to save the cleared grid to Supabase."
+                >
+                  Clear Grid
+                </button>
+                <button
+                  id="syncReloadBtn"
+                  class="btn btn-secondary"
+                  title="Save this grid, tasks, and notes to Supabase, then reload the saved session. Requires a Supabase connection."
+                >
+                  Sync &amp; Reload
+                </button>
+                <button
+                  id="refreshDbBtn"
+                  class="btn btn-secondary"
+                  title="Load today's saved session from Supabase without uploading local changes. Confirmation is required before replacing local tasks, bubbles, memo, and notes."
+                >
+                  Refresh from DB
+                </button>
+              </div>
+              <div class="export-actions">
+                <span class="action-separator" aria-hidden="true">|</span>
+                <button
+                  id="exportBtn"
+                  class="btn btn-secondary"
+                  title="Download this session's task totals and activity summaries as a CSV file."
+                >
+                  Export CSV
+                </button>
+              </div>
+            </div>
+          </details>
         </section>
 
         <!-- Time Grid -->

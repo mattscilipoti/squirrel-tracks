@@ -47,6 +47,11 @@ python3 -m http.server 5000  # Open http://localhost:5000
 
 ### Web Grid Actions
 
+Add stays visible beside the task input. Clear Grid, Sync & Reload, Refresh from
+DB, and Export CSV are in the collapsed **Advanced** section in the same toolbar.
+A pipe separates the data-changing controls from Export CSV. Expand Advanced
+to access these actions; existing confirmations and tooltips remain in place.
+
 | Action                | Purpose                                                                                                                                       |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Add                   | Add a task row to today's session. Enter in the task field also adds it.                                                                      |
@@ -99,7 +104,7 @@ change the grid's 15-minute bubbles. The interval, bell preference, volume, and 
 reminder deadline are saved in this browser across reloads.
 
 Browsers require a user interaction before allowing audio. If needed, select
-**Enable bell audio**, after Date in the header, to unlock sound and hear a preview.
+**Enable bell audio**, immediately before Advanced in the toolbar, to unlock sound and hear a preview.
 The button appears when Bell is enabled but the audio context is not running
 (including an unknown, suspended, or interrupted state). It hides when audio
 is running or Bell is intentionally muted. The browser audio state cannot detect

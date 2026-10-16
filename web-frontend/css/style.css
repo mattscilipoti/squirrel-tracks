@@ -321,7 +321,7 @@ header a:hover {
 .grid-controls {
   display: flex;
   gap: 10px;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
@@ -346,6 +346,42 @@ header a:hover {
 
 .spacer {
   flex: 1;
+}
+
+.advanced-actions {
+  max-width: 100%;
+}
+
+.advanced-actions summary {
+  padding: 6px 4px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.advanced-actions summary:focus-visible {
+  outline: 2px solid #007bff;
+}
+
+.advanced-controls,
+.data-change-actions,
+.export-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.advanced-controls {
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.data-change-actions {
+  flex-wrap: wrap;
+}
+
+.action-separator {
+  color: #777;
 }
 
 .btn {
