@@ -1,6 +1,39 @@
 const TimeCalculations = {
   intervalCount: 96,
 
+  taskIntervalTotal(
+    taskId,
+    selectedDay,
+    currentIntervals,
+    dayTotals,
+    snapshots = [],
+  ) {
+    const counts = new Map();
+    for (const row of dayTotals) {
+      if (String(row.task_id) === String(taskId))
+        counts.set(String(row.session_id), Number(row.interval_count));
+    }
+    for (const state of snapshots) {
+      if (!state.taskIds && !state.taskIdMap) continue;
+      const day = String(state.sessionId ?? `local:${state.date}`);
+      if (day === selectedDay) continue;
+      const ids =
+        state.taskIds ||
+        (state.tasks || []).map((name) => state.taskIdMap?.[name]);
+      const count = ids.reduce(
+        (total, id, index) =>
+          total +
+          (String(id) === String(taskId)
+            ? (state.gridData?.[index] || []).filter(Boolean).length
+            : 0),
+        0,
+      );
+      counts.set(day, count);
+    }
+    counts.set(selectedDay, currentIntervals);
+    return [...counts.values()].reduce((total, count) => total + count, 0);
+  },
+
   reminderTick(now, nextReminderAt, intervalSeconds) {
     const intervalMilliseconds = intervalSeconds * 1000;
     const elapsedIntervals =
@@ -63,7 +96,12 @@ const TimeCalculations = {
       `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
     const duration = (minutes) =>
       `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-    const trackedMinutes = filledSlots.length * 15;
+    const trackedMinutes =
+      gridData.reduce(
+        (count, row) =>
+          count + row.slice(0, this.intervalCount).filter(Boolean).length,
+        0,
+      ) * 15;
     return {
       firstActivity: clockTime(firstMinute),
       lastActivity: clockTime(lastMinute),

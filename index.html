@@ -146,9 +146,28 @@
             <button
               id="addTaskBtn"
               class="btn btn-primary btn-small"
-              title="Add a task row to the selected day's session."
+              title="Create a uniquely named task and add it to this day. If the name exists, use Add existing to reuse its ID and history."
             >
               Add
+            </button>
+          </div>
+          <div class="task-reuse-wrapper">
+            <select
+              id="existingTaskSelect"
+              class="input-field-small"
+              aria-label="Existing task to reuse"
+              title="Reuse a task with its existing ID and history"
+            >
+              <option value="">Reuse a task...</option>
+            </select>
+            <button
+              id="reuseTaskBtn"
+              class="btn btn-secondary btn-small"
+              type="button"
+              disabled
+              title="Add the selected existing task to this day without copying or merging it"
+            >
+              Add existing
             </button>
           </div>
           <div class="spacer"></div>

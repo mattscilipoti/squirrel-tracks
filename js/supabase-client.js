@@ -47,7 +47,7 @@ class SupabaseClient {
   /**
    * Generic fetch wrapper
    */
-  async request(method, path, data = null) {
+  async request(method, path, data = null, prefer = null) {
     const url = `${this.baseURL}${path}`;
     const options = {
       method,
@@ -57,6 +57,7 @@ class SupabaseClient {
     if (method === "POST") {
       options.headers.Prefer = "return=representation";
     }
+    if (prefer) options.headers.Prefer = prefer;
 
     if (data) {
       options.body = JSON.stringify(data);
@@ -94,18 +95,57 @@ class SupabaseClient {
   async getSession(sessionId) {
     const result = await this.request(
       "GET",
-      `/sessions?id=eq.${sessionId}&select=*,tasks(*)`,
+      `/sessions?id=eq.${sessionId}&select=*,session_tasks(task:tasks(*))`,
     );
-    return result?.[0] || null;
+    return result?.[0] ? this.normalizeSession(result[0]) : null;
   }
 
   async getSessionsForDate(date) {
     const params = new URLSearchParams({
       date: `eq.${date}`,
-      select: "*,tasks(*),intervals(id)",
+      select: "*,session_tasks(task:tasks(*)),intervals(id)",
       order: "id.desc",
     });
-    return this.request("GET", `/sessions?${params}`);
+    const sessions = await this.request("GET", `/sessions?${params}`);
+    return sessions.map((session) => this.normalizeSession(session));
+  }
+
+  normalizeSession(session) {
+    return {
+      ...session,
+      tasks: (session.session_tasks || []).map((link) => link.task),
+    };
+  }
+
+  async getAllRows(table, select, order) {
+    const rows = [];
+    for (let offset = 0; ; offset += 1000) {
+      const params = new URLSearchParams({
+        select,
+        order,
+        limit: "1000",
+        offset: String(offset),
+      });
+      const page = await this.request("GET", `/${table}?${params}`);
+      rows.push(...page);
+      if (page.length < 1000) return rows;
+    }
+  }
+
+  getTaskCatalog() {
+    return this.getAllRows(
+      "task_totals",
+      "id,name,interval_count",
+      "name.asc,id.asc",
+    );
+  }
+
+  getTaskDayTotals() {
+    return this.getAllRows(
+      "task_day_totals",
+      "session_id,task_id,interval_count",
+      "session_id.asc,task_id.asc",
+    );
   }
 
   async updateSession(sessionId, data) {
@@ -121,26 +161,32 @@ class SupabaseClient {
    */
 
   async createTask(sessionId, data) {
-    const taskData = {
-      ...data,
-      session_id: sessionId,
-    };
-    const result = await this.request("POST", "/tasks", taskData);
-    return result?.[0] || result;
+    const result = await this.request("POST", "/tasks", data);
+    const task = result?.[0] || result;
+    await this.attachTask(sessionId, task.id);
+    return task;
+  }
+
+  attachTask(sessionId, taskId) {
+    return this.request(
+      "POST",
+      "/session_tasks?on_conflict=session_id,task_id",
+      {
+        session_id: sessionId,
+        task_id: taskId,
+      },
+      "resolution=ignore-duplicates,return=representation",
+    );
   }
 
   async updateTask(sessionId, taskId, data) {
-    return this.request(
-      "PATCH",
-      `/tasks?id=eq.${taskId}&session_id=eq.${sessionId}`,
-      data,
-    );
+    return this.request("PATCH", `/tasks?id=eq.${taskId}`, data);
   }
 
   async deleteTask(sessionId, taskId) {
     return this.request(
       "DELETE",
-      `/tasks?id=eq.${taskId}&session_id=eq.${sessionId}`,
+      `/session_tasks?task_id=eq.${taskId}&session_id=eq.${sessionId}`,
     );
   }
 

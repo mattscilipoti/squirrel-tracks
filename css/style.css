@@ -355,6 +355,16 @@ header a:hover {
   gap: 6px;
 }
 
+.task-reuse-wrapper {
+  display: flex;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.task-reuse-wrapper select {
+  min-width: 0;
+}
+
 .input-field-small {
   padding: 6px 8px;
   border: 1px solid #ccc;

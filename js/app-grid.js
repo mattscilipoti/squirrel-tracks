@@ -7,6 +7,9 @@ class GridTaskTracker {
   constructor() {
     this.tasks = [];
     this.taskIdMap = {}; // Map task name to Supabase ID
+    this.taskIds = [];
+    this.taskCatalog = [];
+    this.taskDayTotals = [];
     this.gridData = []; // 2D array: tasks[taskIdx][intervalIdx] = true/false (filled or not)
     this.sessionId = null;
     this.startTime = "";
@@ -90,6 +93,7 @@ class GridTaskTracker {
 
   async loadOrCreateSession() {
     try {
+      await this.refreshTaskCatalog();
       const sessions = await this.db.getSessionsForDate(this.date);
       const session = this.selectCloudSession(sessions);
       if (session) {
@@ -176,6 +180,7 @@ class GridTaskTracker {
 
     const sessionTasks = session.tasks || [];
     this.tasks = sessionTasks.map((task) => task.name);
+    this.taskIds = sessionTasks.map((task) => task.id);
     this.taskIdMap = {};
     sessionTasks.forEach((task) => {
       this.taskIdMap[task.name] = task.id;
@@ -187,10 +192,11 @@ class GridTaskTracker {
 
   async loadSessionFromSupabase(session, expectedDate = this.date) {
     const intervals = await this.db.getSessionIntervals(session.id);
+    await this.refreshTaskCatalog();
     this.restoreSessionData(session, expectedDate);
     const taskIndexById = new Map(
       this.tasks.map((taskName, index) => [
-        String(this.taskIdMap[taskName]),
+        String(this.getTaskId(index)),
         index,
       ]),
     );
@@ -214,7 +220,99 @@ class GridTaskTracker {
     this.saveToLocalStorage();
   }
 
+  async refreshTaskCatalog() {
+    if (!hasSupabaseConfig() || !this.db.getTaskCatalog) return;
+    const [catalog, totals] = await Promise.all([
+      this.db.getTaskCatalog(),
+      this.db.getTaskDayTotals(),
+    ]);
+    const local = (this.taskCatalog || []).filter(
+      (task) => !this.isCloudTaskId(task.id),
+    );
+    this.taskCatalog = [...catalog, ...local];
+    this.taskDayTotals = totals;
+    localStorage.setItem("ettTaskCatalog", JSON.stringify(this.taskCatalog));
+    localStorage.setItem("ettTaskDayTotals", JSON.stringify(totals));
+    this.applyCatalogNames();
+    this.updateTaskPicker();
+  }
+
+  applyCatalogNames() {
+    this.tasks = this.tasks.map(
+      (name, index) =>
+        this.taskCatalog?.find(
+          (task) => String(task.id) === String(this.getTaskId(index)),
+        )?.name || name,
+    );
+  }
+
+  updateTaskPicker() {
+    const select = document.getElementById("existingTaskSelect");
+    if (!select) return;
+    const previous = select.value;
+    select.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Reuse a task...";
+    select.appendChild(placeholder);
+    for (const task of this.taskCatalog || []) {
+      if (this.taskIds?.some((id) => String(id) === String(task.id))) continue;
+      const option = document.createElement("option");
+      option.value = String(task.id);
+      option.textContent = `${task.name} (#${task.id})`;
+      select.appendChild(option);
+    }
+    select.value = previous;
+    document.getElementById("reuseTaskBtn").disabled = !select.value;
+  }
+
+  async reuseTask(id) {
+    this.ensureTaskIds();
+    if (this.taskIds.some((taskId) => String(taskId) === String(id))) return;
+    const task = this.taskCatalog?.find(
+      (entry) => String(entry.id) === String(id),
+    );
+    if (!task) throw new Error("Choose an existing task.");
+    if (this.isFullSyncing || this.isInitializingSession || this.isSyncing)
+      throw new Error("Wait for syncing to finish.");
+    this.isFullSyncing = true;
+    const container = document.querySelector(".container");
+    const wasInert = container.inert;
+    container.inert = true;
+    try {
+      if (this.sessionId && this.isCloudTaskId(task.id))
+        await this.db.attachTask(this.sessionId, task.id);
+      this.tasks.push(task.name);
+      this.taskIds.push(task.id);
+      this.gridData.push(new Array(TimeCalculations.intervalCount).fill(false));
+      this.renderGrid();
+      this.updateTaskCount();
+      this.updateSummary();
+      this.updateTaskPicker();
+      this.saveToLocalStorage();
+    } finally {
+      this.isFullSyncing = false;
+      container.inert = wasInert;
+    }
+  }
+
   initializeUI() {
+    document
+      .getElementById("existingTaskSelect")
+      .addEventListener("change", (event) => {
+        document.getElementById("reuseTaskBtn").disabled = !event.target.value;
+      });
+    document
+      .getElementById("reuseTaskBtn")
+      .addEventListener("click", async () => {
+        try {
+          await this.reuseTask(
+            document.getElementById("existingTaskSelect").value,
+          );
+        } catch (error) {
+          alert(error.message || "Could not reuse the task.");
+        }
+      });
     document.getElementById("dateInput").addEventListener("change", (event) => {
       this.changeSessionDate(event.target.value);
     });
@@ -331,7 +429,13 @@ class GridTaskTracker {
       return;
     }
 
-    this.addTask(taskName);
+    try {
+      this.addTask(taskName);
+    } catch (error) {
+      alert(error.message);
+      input.focus();
+      return;
+    }
     input.value = "";
     input.focus();
   }
@@ -339,8 +443,48 @@ class GridTaskTracker {
   /**
    * Add task to grid and initialize its row
    */
+  ensureTaskIds() {
+    this.taskIds = this.tasks.map(
+      (name, index) =>
+        this.taskIds?.[index] ??
+        this.taskIdMap[name] ??
+        `local:${globalThis.crypto?.randomUUID?.() || `${Date.now()}:${Math.random().toString(36).slice(2)}`}`,
+    );
+  }
+
+  getTaskId(index) {
+    return this.taskIds?.[index] ?? this.taskIdMap[this.tasks[index]];
+  }
+
+  isCloudTaskId(id) {
+    return id !== undefined && id !== null && !String(id).startsWith("local:");
+  }
+
+  findTaskNameConflict(name, exceptId = null) {
+    const normalized = name.trim().toLocaleLowerCase();
+    return (this.taskCatalog || []).find(
+      (task) =>
+        String(task.id) !== String(exceptId) &&
+        task.name.trim().toLocaleLowerCase() === normalized,
+    );
+  }
+
   addTask(taskName) {
-    this.tasks.push(taskName);
+    const name = taskName.trim();
+    if (!name) throw new Error("Enter a task name.");
+    if (this.findTaskNameConflict(name)) {
+      throw new Error(
+        'A task with this name already exists. Choose it from "Reuse a task..." instead.',
+      );
+    }
+    this.ensureTaskIds();
+    const localId = `local:${globalThis.crypto?.randomUUID?.() || `${Date.now()}:${Math.random().toString(36).slice(2)}`}`;
+    this.tasks.push(name);
+    this.taskIds.push(localId);
+    this.taskCatalog = [
+      ...(this.taskCatalog || []),
+      { id: localId, name, interval_count: 0 },
+    ];
     this.gridData.push(new Array(TimeCalculations.intervalCount).fill(false));
     this.renderGrid();
     this.updateSummary();
@@ -349,24 +493,56 @@ class GridTaskTracker {
 
     // Sync to Supabase asynchronously
     if (this.sessionId) {
-      this.trackPendingWrite(this.createTaskInSupabase(taskName));
+      this.trackPendingWrite(this.createTaskInSupabase(name, localId));
     }
   }
 
   /**
    * Create task in Supabase
    */
-  async createTaskInSupabase(taskName) {
+  async createTaskInSupabase(taskName, localId) {
+    const sessionId = this.sessionId;
     try {
-      const result = await this.db.createTask(this.sessionId, {
+      const result = await this.db.createTask(sessionId, {
         name: taskName,
         duration_minutes: 0,
       });
       const taskId = result?.[0]?.id || result?.id;
       this.taskIdMap[taskName] = taskId;
+      const index = this.taskIds?.findIndex(
+        (id) => String(id) === String(localId),
+      );
+      if (index >= 0) this.taskIds[index] = taskId;
+      else if (localId !== undefined)
+        await this.db.deleteTask(sessionId, taskId);
+      this.replaceCachedTaskId(localId, taskId, taskName);
+      await this.refreshTaskCatalog();
+      this.updateTaskPicker();
+      this.updateSummary();
+      this.saveToLocalStorage();
       console.log("Task synced to Supabase:", taskName, taskId);
     } catch (error) {
       console.error("Failed to sync task to Supabase:", error);
+      if (/duplicate|already exists/i.test(error.message || "")) {
+        const index = this.taskIds.findIndex(
+          (id) => String(id) === String(localId),
+        );
+        if (index >= 0) {
+          this.tasks.splice(index, 1);
+          this.taskIds.splice(index, 1);
+          this.gridData.splice(index, 1);
+          this.taskCatalog = this.taskCatalog.filter(
+            (task) => String(task.id) !== String(localId),
+          );
+          this.renderGrid();
+          this.updateTaskCount();
+          this.updateSummary();
+          this.saveToLocalStorage();
+        }
+        alert(
+          'A task with this name already exists. Choose it from "Reuse a task..." instead.',
+        );
+      }
     }
   }
 
@@ -376,7 +552,8 @@ class GridTaskTracker {
     input.className = "task-name-editor";
     input.value = this.tasks[taskIdx];
     input.setAttribute("aria-label", "Task name");
-    input.title = "Enter to save; Escape to cancel";
+    input.title =
+      "Rename this task across all days. Enter to save; Escape to cancel";
     let finished = false;
     const save = async () => {
       if (finished) return;
@@ -410,14 +587,17 @@ class GridTaskTracker {
   }
 
   async renameTask(taskIdx, value) {
+    this.ensureTaskIds();
     const name = value.trim();
     const previousName = this.tasks[taskIdx];
     if (!name) throw new Error("Enter a task name.");
     if (previousName === undefined)
       throw new Error("This task no longer exists.");
     if (name === previousName) return;
-    if (this.tasks.some((task, index) => index !== taskIdx && task === name)) {
-      throw new Error("Another task already has this name.");
+    if (this.findTaskNameConflict(name, this.getTaskId(taskIdx))) {
+      throw new Error(
+        'A task with this name already exists. Choose it from "Reuse a task..." instead.',
+      );
     }
     if (this.isFullSyncing || this.isSyncing || this.isInitializingSession) {
       throw new Error("Wait for the current sync to finish, then try again.");
@@ -428,14 +608,17 @@ class GridTaskTracker {
     container.inert = true;
     try {
       await this.waitForPendingWrites();
-      const taskId = this.taskIdMap[previousName];
-      if (this.sessionId) {
-        if (!taskId) throw new Error("Sync this task before renaming it.");
+      const taskId = this.getTaskId(taskIdx);
+      if (this.sessionId && this.isCloudTaskId(taskId)) {
         await this.db.updateTask(this.sessionId, taskId, { name });
+      } else if (this.sessionId) {
+        throw new Error("Sync this task before renaming it.");
       }
       this.tasks[taskIdx] = name;
       delete this.taskIdMap[previousName];
       if (taskId) this.taskIdMap[name] = taskId;
+      this.renameCachedTask(taskId, name);
+      this.updateTaskPicker();
       this.renderGrid();
       this.updateSummary();
       this.saveToLocalStorage();
@@ -449,10 +632,12 @@ class GridTaskTracker {
    * Remove task by index
    */
   removeTask(taskIdx) {
+    this.ensureTaskIds();
     const taskName = this.tasks[taskIdx];
-    const taskId = this.taskIdMap[taskName];
+    const taskId = this.getTaskId(taskIdx);
 
     this.tasks.splice(taskIdx, 1);
+    this.taskIds.splice(taskIdx, 1);
     this.gridData.splice(taskIdx, 1);
     delete this.taskIdMap[taskName];
 
@@ -462,7 +647,7 @@ class GridTaskTracker {
     this.saveToLocalStorage();
 
     // Delete from Supabase asynchronously
-    if (this.sessionId && taskId) {
+    if (this.sessionId && this.isCloudTaskId(taskId)) {
       this.trackPendingWrite(this.deleteTaskFromSupabase(taskId));
     }
   }
@@ -473,10 +658,52 @@ class GridTaskTracker {
   async deleteTaskFromSupabase(taskId) {
     try {
       await this.db.deleteTask(this.sessionId, taskId);
-      console.log("Task deleted from Supabase:", taskId);
+      console.log("Task removed from this session:", taskId);
     } catch (error) {
       console.error("Failed to delete task from Supabase:", error);
     }
+  }
+
+  renameCachedTask(taskId, name) {
+    const history = JSON.parse(localStorage.getItem("ettGridHistory") || "{}");
+    for (const state of Object.values(history)) {
+      const ids =
+        state.taskIds ||
+        (state.tasks || []).map((task) => state.taskIdMap?.[task]);
+      state.tasks?.forEach((task, index) => {
+        if (String(ids[index]) === String(taskId)) {
+          state.tasks[index] = name;
+          if (state.taskIdMap) {
+            delete state.taskIdMap[task];
+            state.taskIdMap[name] = taskId;
+          }
+        }
+      });
+      state.taskIds = ids;
+    }
+    localStorage.setItem("ettGridHistory", JSON.stringify(history));
+    const catalog = this.taskCatalog || [];
+    const task = catalog.find((entry) => String(entry.id) === String(taskId));
+    if (task) task.name = name;
+    else catalog.push({ id: taskId, name, interval_count: 0 });
+    this.taskCatalog = catalog;
+    localStorage.setItem("ettTaskCatalog", JSON.stringify(catalog));
+  }
+
+  replaceCachedTaskId(previousId, taskId, name) {
+    const history = JSON.parse(localStorage.getItem("ettGridHistory") || "{}");
+    for (const state of Object.values(history)) {
+      state.taskIds = (state.taskIds || []).map((id) =>
+        String(id) === String(previousId) ? taskId : id,
+      );
+    }
+    localStorage.setItem("ettGridHistory", JSON.stringify(history));
+    this.taskCatalog = (this.taskCatalog || []).filter(
+      (task) => String(task.id) !== String(previousId),
+    );
+    if (!this.taskCatalog.some((task) => String(task.id) === String(taskId)))
+      this.taskCatalog.push({ id: taskId, name, interval_count: 0 });
+    localStorage.setItem("ettTaskCatalog", JSON.stringify(this.taskCatalog));
   }
 
   /**
@@ -556,6 +783,7 @@ class GridTaskTracker {
       );
       if (cached) {
         this.loadFromLocalStorage(JSON.stringify(cached));
+        await this.refreshTaskCatalog();
       } else if (hasSupabaseConfig()) {
         const sessions = await this.db.getSessionsForDate(date);
         const session = this.selectCloudSession(sessions);
@@ -581,6 +809,7 @@ class GridTaskTracker {
       this.updateSummary();
       this.updateTimeCalculations();
       this.saveToLocalStorage();
+      this.updateTaskPicker();
       return true;
     } catch (error) {
       if (previousState) this.loadFromLocalStorage(previousState);
@@ -727,7 +956,7 @@ class GridTaskTracker {
       nameButton.type = "button";
       nameButton.className = "task-name-button";
       nameButton.textContent = taskName;
-      nameButton.title = `Rename task: ${taskName}`;
+      nameButton.title = `Rename task across all days: ${taskName}`;
       nameButton.setAttribute("aria-label", `Rename task: ${taskName}`);
       nameButton.addEventListener("click", () =>
         this.editTaskName(taskIdx, nameButton),
@@ -738,7 +967,8 @@ class GridTaskTracker {
       const removeBtn = document.createElement("span");
       removeBtn.className = "task-remove";
       removeBtn.textContent = "×";
-      removeBtn.title = "Remove task";
+      removeBtn.title =
+        "Remove from this day; keep the reusable task and other days' time";
       removeBtn.addEventListener("click", () => this.removeTask(taskIdx));
       taskCell.appendChild(removeBtn);
 
@@ -786,6 +1016,7 @@ class GridTaskTracker {
 
     this.updateCurrentTimeLine();
     this.saveToLocalStorage();
+    this.updateTaskPicker();
   }
 
   /**
@@ -879,6 +1110,9 @@ class GridTaskTracker {
     }
 
     this.isFullSyncing = true;
+    const container = document.querySelector(".container");
+    const wasInert = container.inert;
+    container.inert = true;
     if (button) {
       button.disabled = true;
       button.textContent = "Syncing...";
@@ -908,29 +1142,24 @@ class GridTaskTracker {
       const remoteTasks = session.tasks || [];
       const usedTaskIds = new Set();
       const nextTaskIdMap = {};
+      this.ensureTaskIds();
 
-      for (const taskName of this.tasks) {
-        const knownId = this.taskIdMap[taskName];
-        let remoteTask = remoteTasks.find(
-          (task) =>
-            String(task.id) === String(knownId) &&
-            !usedTaskIds.has(String(task.id)),
-        );
-        if (!remoteTask) {
-          remoteTask = remoteTasks.find(
-            (task) =>
-              task.name === taskName && !usedTaskIds.has(String(task.id)),
-          );
-        }
-
-        let taskId = remoteTask?.id;
-        if (!taskId) {
+      for (const [taskIndex, taskName] of this.tasks.entries()) {
+        const knownId = this.getTaskId(taskIndex);
+        let taskId = knownId;
+        if (!this.isCloudTaskId(taskId)) {
           const createdTask = await this.db.createTask(this.sessionId, {
             name: taskName,
             duration_minutes: 0,
           });
           taskId = createdTask?.id || createdTask?.[0]?.id;
           if (!taskId) throw new Error(`Could not sync task "${taskName}".`);
+          this.replaceCachedTaskId(knownId, taskId, taskName);
+          this.taskIds[taskIndex] = taskId;
+        } else if (
+          !remoteTasks.some((task) => String(task.id) === String(taskId))
+        ) {
+          await this.db.attachTask(this.sessionId, taskId);
         }
 
         nextTaskIdMap[taskName] = taskId;
@@ -949,7 +1178,7 @@ class GridTaskTracker {
       );
       const desiredIntervals = new Map();
       this.tasks.forEach((taskName, taskIndex) => {
-        const taskId = this.taskIdMap[taskName];
+        const taskId = this.getTaskId(taskIndex);
         for (
           let intervalIndex = 0;
           intervalIndex < TimeCalculations.intervalCount;
@@ -1001,6 +1230,7 @@ class GridTaskTracker {
       alert(`Sync failed: ${error.message || "Unknown Supabase error"}`);
     } finally {
       this.isFullSyncing = false;
+      container.inert = wasInert;
       if (button) {
         button.disabled = false;
         if (button.textContent === "Syncing...") {
@@ -1015,9 +1245,9 @@ class GridTaskTracker {
    */
   async syncIntervalToSupabase(intervalIdx, taskIdx, isFilled) {
     const taskName = this.tasks[taskIdx];
-    const taskId = this.taskIdMap[taskName];
+    const taskId = this.getTaskId(taskIdx);
 
-    if (!taskId) {
+    if (!this.isCloudTaskId(taskId)) {
       console.warn("Task ID not found, skipping interval sync");
       return;
     }
@@ -1051,17 +1281,32 @@ class GridTaskTracker {
     this.updateSummary();
   }
 
+  taskAllDayIntervals(
+    taskIndex,
+    snapshots = Object.values(
+      JSON.parse(localStorage.getItem("ettGridHistory") || "{}"),
+    ),
+  ) {
+    return TimeCalculations.taskIntervalTotal(
+      this.getTaskId(taskIndex),
+      String(this.sessionId ?? `local:${this.date}`),
+      (this.gridData[taskIndex] || []).filter(Boolean).length,
+      this.taskDayTotals || [],
+      snapshots,
+    );
+  }
+
   /**
    * Update summary with interval counts and time breakdowns per task
    */
   updateSummary() {
+    this.ensureTaskIds();
     const summaryContent = document.getElementById("summaryContent");
-    const rows = this.tasks
-      .map((name, index) => ({
-        name,
-        intervals: (this.gridData[index] || []).filter(Boolean).length,
-      }))
-      .filter((row) => row.intervals > 0);
+    const rows = this.tasks.map((name, index) => ({
+      name,
+      intervals: (this.gridData[index] || []).filter(Boolean).length,
+      taskId: this.getTaskId(index),
+    }));
     const totalIntervals = rows.reduce(
       (total, row) => total + row.intervals,
       0,
@@ -1071,6 +1316,12 @@ class GridTaskTracker {
     table.setAttribute("aria-label", "Task summary");
     const head = table.createTHead();
     const body = table.createTBody();
+    const snapshots = Object.values(
+      JSON.parse(localStorage.getItem("ettGridHistory") || "{}"),
+    );
+    rows.forEach((row, index) => {
+      row.allIntervals = this.taskAllDayIntervals(index, snapshots);
+    });
     const appendRow = (
       section,
       values,
@@ -1087,24 +1338,38 @@ class GridTaskTracker {
       });
       return row;
     };
-    const taskValues = (name, intervals) => {
+    const duration = (intervals) => {
       const minutes = intervals * 15;
       const time =
         minutes >= 60
           ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
           : `${minutes}m`;
-      return [name, intervals, time];
+      return time;
     };
-    const totalRow = appendRow(head, taskValues("Totals", totalIntervals), {
-      className: "summary-header",
-    });
+    const totalRow = appendRow(
+      head,
+      [
+        "Totals",
+        duration(totalIntervals),
+        duration(rows.reduce((total, row) => total + row.allIntervals, 0)),
+      ],
+      {
+        className: "summary-header",
+      },
+    );
     totalRow.title =
-      "Sum of task bubbles; overlapping slots count once per task, unlike Tracked Time.";
-    appendRow(head, ["Task", "Intervals", "Time"], {
+      "Sum of bubble time for the tasks shown. Overlapping tasks count separately; no overlap compensation.";
+    appendRow(head, ["Task", "Day", "All days"], {
       className: "summary-header",
       columnHeadings: true,
     });
-    rows.forEach((row) => appendRow(body, taskValues(row.name, row.intervals)));
+    rows.forEach((row) =>
+      appendRow(body, [
+        row.name,
+        duration(row.intervals),
+        duration(row.allIntervals),
+      ]),
+    );
     if (!rows.length) {
       const empty = body.insertRow().insertCell();
       empty.colSpan = 3;
@@ -1121,7 +1386,8 @@ class GridTaskTracker {
     const date = this.date;
     const activity = TimeCalculations.activitySummary(this.gridData);
 
-    let csv = "TASK,INTERVALS,MINUTES,TIME\n";
+    let csv = "TASK_ID,TASK,INTERVALS,MINUTES,TIME,ALL_DAYS_MINUTES\n";
+    const csvField = (value) => `"${String(value).replaceAll('"', '""')}"`;
 
     this.tasks.forEach((taskName, taskIdx) => {
       const intervalCount = this.gridData[taskIdx].filter((v) => v).length;
@@ -1138,7 +1404,7 @@ class GridTaskTracker {
         timeStr = "0m";
       }
 
-      csv += `"${taskName}",${intervalCount},${minutes},"${timeStr}"\n`;
+      csv += `${csvField(this.getTaskId(taskIdx))},${csvField(taskName)},${intervalCount},${minutes},${csvField(timeStr)},${this.taskAllDayIntervals(taskIdx) * 15}\n`;
     });
 
     // Add metadata
@@ -1148,7 +1414,7 @@ class GridTaskTracker {
     csv += `Last Activity,${activity.lastActivity}\n`;
     csv += `Session Span,${activity.sessionSpan}\n`;
     csv += `Tracked Time,${activity.trackedTime}\n`;
-    csv += `Memo,"${document.getElementById("memoInput")?.value || ""}"\n`;
+    csv += `Memo,${csvField(document.getElementById("memoInput")?.value || "")}\n`;
 
     // Download
     const filename = `ETT-${date}.csv`;
@@ -1333,6 +1599,7 @@ class GridTaskTracker {
     localStorage.setItem("ettGridHistory", JSON.stringify(history));
 
     this.tasks = [];
+    this.taskIds = [];
     this.taskIdMap = {};
     this.gridData = [];
     this.sessionId = null;
@@ -1346,6 +1613,7 @@ class GridTaskTracker {
     }
     this.updateDateControl(now);
     this.saveToLocalStorage();
+    this.updateTaskPicker();
     return true;
   }
 
@@ -1353,6 +1621,14 @@ class GridTaskTracker {
    * Save state to localStorage
    */
   saveToLocalStorage() {
+    this.ensureTaskIds();
+    this.taskCatalog ||= [];
+    this.tasks.forEach((name, index) => {
+      const id = this.getTaskId(index);
+      if (!this.taskCatalog.some((task) => String(task.id) === String(id)))
+        this.taskCatalog.push({ id, name, interval_count: 0 });
+    });
+    localStorage.setItem("ettTaskCatalog", JSON.stringify(this.taskCatalog));
     // Save form inputs
     this.updateActivitySummary();
     this.memo = document.getElementById("memoInput")?.value || "";
@@ -1360,6 +1636,7 @@ class GridTaskTracker {
 
     const state = {
       tasks: this.tasks,
+      taskIds: this.taskIds,
       gridData: this.gridData,
       sessionId: this.sessionId,
       taskIdMap: this.taskIdMap,
@@ -1421,6 +1698,12 @@ class GridTaskTracker {
    * Load state from localStorage
    */
   loadFromLocalStorage(saved = localStorage.getItem("ettGridState")) {
+    this.taskCatalog = JSON.parse(
+      localStorage.getItem("ettTaskCatalog") || "[]",
+    );
+    this.taskDayTotals = JSON.parse(
+      localStorage.getItem("ettTaskDayTotals") || "[]",
+    );
     if (saved) {
       try {
         const state = JSON.parse(saved);
@@ -1430,6 +1713,9 @@ class GridTaskTracker {
         );
         this.sessionId = state.sessionId;
         this.taskIdMap = state.taskIdMap || {};
+        this.taskIds = state.taskIds || [];
+        this.ensureTaskIds();
+        this.applyCatalogNames();
         this.followToday = state.followToday !== false;
         this.startTime = state.startTime || "";
         this.memo = state.memo || "";
