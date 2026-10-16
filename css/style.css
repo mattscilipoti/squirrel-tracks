@@ -620,7 +620,7 @@ header a:hover {
 .task-name-button,
 .task-name-editor {
   display: inline-block;
-  width: calc(100% - 78px);
+  width: calc(100% - 20px);
   min-width: 0;
   vertical-align: middle;
   font: inherit;
@@ -650,19 +650,6 @@ header a:hover {
   padding: 1px 2px;
   border: 1px solid #007bff;
   background: white;
-}
-
-.time-grid .task-checkboxes {
-  display: inline-flex;
-  gap: 3px;
-  margin-right: 6px;
-}
-
-.time-grid .task-checkbox {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  cursor: pointer;
 }
 
 .time-grid .task-remove {
