@@ -36,6 +36,7 @@
 - ✅ Ruby 3.3.0
 - ✅ Rails 7.1.1
 - ✅ Node.js 20 (for web dev)
+- ✅ Claude Code CLI
 - ✅ SQLite 3 (lightweight, zero config)
 - ✅ Bundler, Git, Curl, Vim
 
@@ -88,6 +89,13 @@ cd backend && bundle exec rails console
 ```bash
 cd backend && bundle exec rspec
 # OR via Task: "Rails: Run Tests (RSpec)"
+```
+
+### Use Claude Code
+
+```bash
+claude
+# Sign in through the browser when prompted
 ```
 
 ### Database Commands

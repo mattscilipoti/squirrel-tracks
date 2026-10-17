@@ -13,6 +13,14 @@ NC='\033[0m' # No Color
 WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$WORKSPACE_DIR"
 
+echo -e "${BLUE}🤖 Installing Claude Code...${NC}"
+if [[ ! -x "$HOME/.local/bin/claude" ]]; then
+	curl -fsSL https://claude.ai/install.sh | bash
+fi
+echo -e "${GREEN}✅ Claude Code ready${NC}"
+echo -e "   Run: ${YELLOW}claude${NC}"
+echo ""
+
 echo -e "${BLUE}📦 Installing backend dependencies...${NC}"
 cd backend
 bundle install --path ../bundle
