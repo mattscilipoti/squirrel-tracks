@@ -1,6 +1,6 @@
 {
-  "name": "Emergent Task Tracker Dev",
-  "description": "Development environment for ETT (Rails API + iOS + Web)",
+  "name": "Squirrel Tracks Dev",
+  "description": "Development environment for Squirrel Tracks (Rails API + iOS + Web)",
 
   "image": "mcr.microsoft.com/devcontainers/ruby:3.3",
 
@@ -70,7 +70,7 @@
 
   "postCreateCommand": "bash .devcontainer/post-create-command.sh",
 
-  "postStartCommand": "bash -c 'echo && echo \"✅ ETT Dev Environment Ready!\" && echo && echo \"Navigate to components:\" && echo \"  cd backend    (Rails API)\" && echo \"  cd web-frontend (Web app)\" && echo \"  cd ios-app    (iOS project)\" && echo'",
+  "postStartCommand": "bash -c 'echo && echo \"✅ Squirrel Tracks Dev Environment Ready!\" && echo && echo \"Navigate to components:\" && echo \"  cd backend    (Rails API)\" && echo \"  cd web-frontend (Web app)\" && echo \"  cd ios-app    (iOS project)\" && echo'",
 
   "mounts": ["source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly"],
 

@@ -62,7 +62,7 @@ code /home/matt/develop/clients/GreatEnough/ett
 ### 4. Wait & Enjoy ✨
 
 - First time: 2-3 minutes (Docker builds image, installs dependencies)
-- You'll see: **"✅ ETT Dev Environment Ready!"**
+- You'll see: **"✅ Squirrel Tracks Dev Environment Ready!"**
 - Then:
 
 ```bash
@@ -281,7 +281,7 @@ Read in this order:
 1. Open project: `code /home/matt/develop/clients/GreatEnough/ett`
 2. Click notification: "Reopen in Container"
 3. Wait 2-3 minutes
-4. See: "✅ ETT Dev Environment Ready!"
+4. See: "✅ Squirrel Tracks Dev Environment Ready!"
 5. Start developing!
 
 ### After Setup:

@@ -345,7 +345,7 @@ npm install
 
 1. ✅ Open project in VS Code
 2. ✅ Click notification: "Reopen in Container"
-3. ✅ Wait for "✅ ETT Dev Environment Ready!" message
+3. ✅ Wait for "✅ Squirrel Tracks Dev Environment Ready!" message
 4. ✅ Open terminal (Ctrl+`)
 5. ✅ Run: `cd backend && bundle exec rails server`
 6. ✅ Open http://localhost:3000

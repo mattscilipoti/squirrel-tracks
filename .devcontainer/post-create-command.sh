@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Setting up Emergent Task Tracker dev environment..."
+echo "🚀 Setting up Squirrel Tracks dev environment..."
 echo ""
 
 # Colors for output
@@ -46,7 +46,7 @@ echo -e "   Run: ${YELLOW}cd ios-app && pod install${NC}"
 echo ""
 
 echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}✅ ETT Dev Environment Ready!${NC}"
+echo -e "${GREEN}✅ Squirrel Tracks Dev Environment Ready!${NC}"
 echo -e "${GREEN}════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "Quick commands:"

@@ -1,4 +1,4 @@
-# ETT Development Container
+# Squirrel Tracks Development Container
 # Based on Ruby 3.3.0 with SQLite, Node.js, and all dev tools
 
 FROM ruby:3.3.0-slim

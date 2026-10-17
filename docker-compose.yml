@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: .devcontainer/Dockerfile
 
-    container_name: ett-dev
+    container_name: squirrel-tracks-dev
 
     working_dir: /workspaces/squirrel_tracks
 
@@ -29,12 +29,12 @@ services:
     tty: true
 
     networks:
-      - ett-network
+      - squirrel-tracks-network
 
 volumes:
   bundle_cache:
     driver: local
 
 networks:
-  ett-network:
+  squirrel-tracks-network:
     driver: bridge

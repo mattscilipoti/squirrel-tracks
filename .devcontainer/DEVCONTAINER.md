@@ -1,4 +1,4 @@
-# VS Code Dev Container Setup - Emergent Task Tracker
+# VS Code Dev Container Setup - Squirrel Tracks
 
 **One-Click Development Environment** with all dependencies pre-configured.
 
@@ -34,7 +34,7 @@
 4. **See the success message**
 
    ```
-   ✅ ETT Dev Environment Ready!
+   ✅ Squirrel Tracks Dev Environment Ready!
    ```
 
 5. **Start developing!**
@@ -351,7 +351,7 @@ docker system prune
 
 1. ✅ Open project in VS Code
 2. ✅ Reopen in dev container (notification will prompt)
-3. ✅ Wait for "✅ ETT Dev Environment Ready!" message
+3. ✅ Wait for "✅ Squirrel Tracks Dev Environment Ready!" message
 4. ✅ Open terminal (Ctrl+`)
 5. ✅ Run: `cd backend && bundle exec rails server`
 6. ✅ Open http://localhost:3000 in browser

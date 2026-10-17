@@ -52,7 +52,7 @@
    • VS Code shows notification: "Folder contains a Dev Container configuration"
    • Click "Reopen in Container"
    • Wait 2-3 minutes (first time only)
-   • See: "✅ ETT Dev Environment Ready!"
+   • See: "✅ Squirrel Tracks Dev Environment Ready!"
 
 🎉 Done! All dependencies installed, databases created, ready to code.
 
@@ -298,7 +298,7 @@ Read in order:
    • Setup script to run
 
 5. See success message:
-   ✅ ETT Dev Environment Ready!
+   ✅ Squirrel Tracks Dev Environment Ready!
 
 6. Open terminal (Ctrl+`):
    cd backend && bundle exec rails server
