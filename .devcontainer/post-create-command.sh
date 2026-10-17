@@ -14,8 +14,6 @@ cd /workspace/ett
 
 echo -e "${BLUE}📦 Installing backend dependencies...${NC}"
 cd backend
-cp config/database.yml.template config/database.yml
-cp config/application.rb.template config/application.rb
 bundle install --path ../bundle
 
 echo ""

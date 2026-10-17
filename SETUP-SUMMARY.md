@@ -18,8 +18,6 @@ ett/
 │   ├── Gemfile                # Ruby dependencies (low-cost: Rails, PG, Serializers)
 │   ├── .ruby-version          # Ruby 3.3.0 (fixed)
 │   ├── config/
-│   │   ├── application.rb.template     # Rails config (CORS, API-only)
-│   │   └── database.yml.template       # PostgreSQL config
 │   ├── db/                    # Will contain migrations (create after `rails new`)
 │   └── .gitignore
 │
@@ -75,10 +73,6 @@ cd /home/matt/develop/clients/GreatEnough/ett
 ### 2️⃣ **Build Backend**
 ```bash
 cd backend
-
-# Copy config templates
-cp config/application.rb.template config/application.rb
-cp config/database.yml.template config/database.yml
 
 # Install gems
 bundle install

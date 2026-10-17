@@ -14,8 +14,6 @@ ett/
 │   ├── Gemfile
 │   ├── .ruby-version
 │   ├── config/
-│   │   ├── application.rb.template
-│   │   └── database.yml.template
 │   └── ...
 ├── web-frontend/            # Static HTML/CSS/JS app (GitHub Pages compatible)
 │   ├── index.html
@@ -94,10 +92,6 @@ createdb ett_development
 
 ```bash
 cd backend
-
-# Copy config templates
-cp config/application.rb.template config/application.rb
-cp config/database.yml.template config/database.yml
 
 # Install Ruby gems
 bundle install

@@ -22,7 +22,7 @@
 
 ### Database Configuration
 - **backend/Gemfile** — Updated: `sqlite3` gem (was PostgreSQL)
-- **backend/config/database.yml.template** — SQLite configuration
+- **backend/config/database.yml** — SQLite configuration
 - **No PostgreSQL needed** — Zero configuration required!
 
 ### Documentation
