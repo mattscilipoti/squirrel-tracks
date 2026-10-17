@@ -114,10 +114,45 @@ body {
 }
 
 .container {
+  position: relative;
   max-width: 100%;
   margin: 0 auto;
   padding: 20px;
   background: white;
+}
+
+.squirrel-trail-decor {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 15;
+}
+
+.squirrel-print-fragment {
+  position: absolute;
+  width: 18px;
+  height: 72px;
+  color: #725238;
+  opacity: 0.3;
+  font-size: 1rem;
+  line-height: 1;
+  user-select: none;
+}
+
+.squirrel-print-fragment.is-left {
+  left: 1px;
+}
+
+.squirrel-print-fragment.is-right {
+  right: 1px;
+}
+
+.squirrel-print-fragment span {
+  position: absolute;
+  left: var(--print-offset);
+  top: calc(var(--print-index) * 21px);
+  transform: rotate(var(--print-angle));
 }
 
 /* Header Section */
@@ -129,6 +164,52 @@ header {
 
 .header-top {
   margin-bottom: 12px;
+}
+
+.brand-lockup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  margin-bottom: 5px;
+}
+
+.brand-lockup h1 {
+  margin: 0;
+}
+
+.squirrel-trail-graphic {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 118px;
+  height: 38px;
+  overflow: hidden;
+  color: #6f4c2f;
+  user-select: none;
+}
+
+.trail-squirrel {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.trail-print {
+  display: inline-block;
+  font-size: 0.8rem;
+  opacity: 0.72;
+}
+
+.trail-print.print-one {
+  transform: translateY(6px) rotate(-24deg);
+}
+
+.trail-print.print-two {
+  transform: translateY(-4px) rotate(18deg);
+}
+
+.trail-print.print-three {
+  transform: translateY(5px) rotate(-18deg);
 }
 
 header h1 {

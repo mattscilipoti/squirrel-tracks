@@ -49,6 +49,7 @@ class GridTaskTracker {
     this.updateTaskCount();
     this.updateSummary();
     this.updateTimeCalculations();
+    this.initializeSquirrelTrails();
 
     this.currentTimeObserver = new ResizeObserver(() =>
       this.updateCurrentTimeLine(),
@@ -415,6 +416,56 @@ class GridTaskTracker {
 
   bindEvents() {
     // Bubble click handlers are attached in renderGrid()
+  }
+
+  initializeSquirrelTrails() {
+    const decor = document.getElementById("squirrelTrailDecor");
+    if (!decor || decor.childElementCount) return;
+    const fragmentCount = 5;
+    const positions = Array.from(
+      { length: fragmentCount },
+      (_, index) =>
+        ((index + 0.5 + (Math.random() - 0.5) * 0.38) / fragmentCount) * 100,
+    );
+    for (const [index, top] of positions.entries()) {
+      const fragment = document.createElement("div");
+      fragment.className = `squirrel-print-fragment ${Math.random() < 0.5 ? "is-left" : "is-right"}`;
+      fragment.dataset.trailPosition = String(top / 100);
+      for (let printIndex = 0; printIndex < 3; printIndex++) {
+        const print = document.createElement("span");
+        print.textContent = "🐾";
+        print.style.setProperty("--print-index", printIndex);
+        print.style.setProperty("--print-offset", `${2 + Math.random() * 4}px`);
+        const angle =
+          (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 18);
+        print.style.setProperty("--print-angle", `${angle}deg`);
+        fragment.appendChild(print);
+      }
+      decor.appendChild(fragment);
+    }
+    this.positionSquirrelTrails();
+    if (typeof ResizeObserver !== "undefined") {
+      this.squirrelTrailObserver = new ResizeObserver(() =>
+        this.positionSquirrelTrails(),
+      );
+      this.squirrelTrailObserver.observe(document.querySelector(".container"));
+    }
+    window.addEventListener("resize", () => this.positionSquirrelTrails());
+  }
+
+  positionSquirrelTrails() {
+    const decor = document.getElementById("squirrelTrailDecor");
+    const container = document.querySelector(".container");
+    if (!decor || !container) return;
+    const height =
+      decor.clientHeight || container.clientHeight || container.scrollHeight;
+    const fragments = [...decor.children];
+    for (const fragment of fragments) {
+      const fragmentHeight = fragment.offsetHeight || 72;
+      const fraction = Number(fragment.dataset.trailPosition);
+      const top = Math.round(Math.max(0, height - fragmentHeight) * fraction);
+      fragment.style.top = `${top}px`;
+    }
   }
 
   /**

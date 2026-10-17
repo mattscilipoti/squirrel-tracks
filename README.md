@@ -1,8 +1,13 @@
-# 🚀 Emergent Task Tracker (ETT)
+# Squirrel Tracks
 
-A digital version of [Emergent Task Timing](https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/) with 15-minute interval tracking.
+Where does all my time go?
 
-**Tech Stack**: Rails 7.1 API + Swift iOS + Plain HTML/CSS/JS Web  
+> "If you’re working in a distracting environment, you’ve probably wondered what happened to the eight hours you just spent at work. The Emergent Task Timer (ETT) was designed to help answer that question. Using an interval timer, you log what you were doing every 15 minutes or so. You’ll quickly see where your time is going, and have a picture of what your day looked like. The results are often shocking!"
+> -- David Seah, The Printable CEO, [on the Emergent Task Timer](http://davidseah.com/node/the-emergent-task-timer/)
+
+This is a digital version of that [Emergent Task Timing](https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/), with 15-minute interval tracking, for noticing where your day goes. Track tasks in 15-minute bubbles and use a gentle, adjustable reminder to check in throughout the day.
+
+**Tech Stack**: Plain HTML/CSS/JS
 **Status**: 🏗️ Development environment configured (ready for Phase 1)
 
 ---
