@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eo pipefail
 
 echo "🚀 Setting up Squirrel Tracks dev environment..."
 echo ""
@@ -14,16 +15,19 @@ WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$WORKSPACE_DIR"
 
 echo -e "${BLUE}🤖 Installing Claude Code...${NC}"
-if [[ ! -x "$HOME/.local/bin/claude" ]]; then
-	curl -fsSL https://claude.ai/install.sh | bash
+# Optional tool: warn instead of aborting setup if the install fails.
+if [[ -x "$HOME/.local/bin/claude" ]] || curl -fsSL https://claude.ai/install.sh | bash; then
+	echo -e "${GREEN}✅ Claude Code ready${NC}"
+	echo -e "   Run: ${YELLOW}claude${NC}"
+else
+	echo -e "${YELLOW}⚠️  Claude Code install failed; rerun: curl -fsSL https://claude.ai/install.sh | bash${NC}"
 fi
-echo -e "${GREEN}✅ Claude Code ready${NC}"
-echo -e "   Run: ${YELLOW}claude${NC}"
 echo ""
 
 echo -e "${BLUE}📦 Installing backend dependencies...${NC}"
 cd backend
-bundle install --path ../bundle
+# Install location comes from BUNDLE_PATH (set in devcontainer.json)
+bundle install
 
 echo ""
 echo -e "${BLUE}🗄️  Creating SQLite databases...${NC}"
