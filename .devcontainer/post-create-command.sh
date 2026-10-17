@@ -9,8 +9,9 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Navigate to project root
-cd /workspace/ett
+# Resolve the project root from this script's location.
+WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$WORKSPACE_DIR"
 
 echo -e "${BLUE}📦 Installing backend dependencies...${NC}"
 cd backend
@@ -26,7 +27,7 @@ echo -e "   Run: ${YELLOW}cd backend && bundle exec rails server${NC}"
 echo ""
 
 # Go back to root
-cd /workspace/ett
+cd "$WORKSPACE_DIR"
 
 echo -e "${BLUE}🌐 Web frontend ready${NC}"
 echo -e "   Run: ${YELLOW}cd web-frontend && python3 -m http.server 5000${NC}"

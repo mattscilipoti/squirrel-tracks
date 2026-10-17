@@ -1,9 +1,9 @@
 {
   "name": "Emergent Task Tracker Dev",
   "description": "Development environment for ETT (Rails API + iOS + Web)",
-  
+
   "image": "mcr.microsoft.com/devcontainers/ruby:3.3",
-  
+
   "features": {
     "ghcr.io/devcontainers/features/node:latest": {
       "version": "20"
@@ -13,8 +13,10 @@
 
   "containerEnv": {
     "RAILS_ENV": "development",
-    "BUNDLE_PATH": "/workspace/ett/bundle"
+    "BUNDLE_PATH": "${containerWorkspaceFolder}/bundle"
   },
+
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 
   "remoteUser": "vscode",
 
@@ -48,7 +50,7 @@
         "ruby.lsp.nesting": true,
         "ruby.lsp.rubyVersionManager": "rbenv"
       },
-      
+
       "extensions": [
         "rubocop.ruby-lsp",
         "esbenp.prettier-vscode",
@@ -64,14 +66,12 @@
 
   "postCreateCommand": "bash .devcontainer/post-create-command.sh",
 
-  "postStartCommand": "cd /workspace/ett && bash -c 'echo && echo \"✅ ETT Dev Environment Ready!\" && echo && echo \"Navigate to components:\" && echo \"  cd backend    (Rails API)\" && echo \"  cd web-frontend (Web app)\" && echo \"  cd ios-app    (iOS project)\" && echo'",
+  "postStartCommand": "bash -c 'echo && echo \"✅ ETT Dev Environment Ready!\" && echo && echo \"Navigate to components:\" && echo \"  cd backend    (Rails API)\" && echo \"  cd web-frontend (Web app)\" && echo \"  cd ios-app    (iOS project)\" && echo'",
 
-  "mounts": [
-    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly"
-  ],
+  "mounts": ["source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly"],
 
   "forwardPorts": [3000, 5000],
-  
+
   "portsAttributes": {
     "3000": {
       "label": "Rails API",

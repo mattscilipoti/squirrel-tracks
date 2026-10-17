@@ -7,6 +7,7 @@
 ## 🚀 Quick Start (60 seconds)
 
 ### Prerequisites
+
 - **VS Code** (v1.86+)
 - **Docker Desktop** (installed and running)
 - **Remote - Containers extension** (auto-installed from .vscode/extensions.json)
@@ -14,6 +15,7 @@
 ### Setup Steps
 
 1. **Open this project in VS Code**
+
    ```bash
    code /home/matt/develop/clients/GreatEnough/ett
    ```
@@ -30,13 +32,14 @@
    - Post-create script runs
 
 4. **See the success message**
+
    ```
    ✅ ETT Dev Environment Ready!
    ```
 
 5. **Start developing!**
    ```bash
-   # Terminal is already in /workspace/ett
+   # Terminal is already in /workspaces/squirrel_tracks
    cd backend && bundle exec rails server
    # Opens on http://localhost:3000
    ```
@@ -46,21 +49,25 @@
 ## 📦 What's Included
 
 ### Languages & Runtimes
+
 - ✅ Ruby 3.3.0
 - ✅ Node.js 20 (for web frontend)
 - ✅ Git, Curl, Wget, Vim
 
 ### Databases
+
 - ✅ SQLite 3 (embedded in Rails via gem)
 - ✅ PostgreSQL client (optional, for future use)
 
 ### Development Tools
+
 - ✅ Bundler (Ruby package manager)
 - ✅ Yarn (Node package manager)
 - ✅ Rails 7.1 (pre-installed)
 - ✅ RSpec (testing framework)
 
 ### VS Code Extensions
+
 - ✅ Ruby LSP (language server, code completion, debugging)
 - ✅ Prettier (code formatter)
 - ✅ GitLens (Git integration)
@@ -68,6 +75,7 @@
 - ✅ Remote Container (development inside container)
 
 ### VS Code Features
+
 - ✅ Workspace settings (.vscode/settings.json)
 - ✅ Task definitions (.vscode/tasks.json)
 - ✅ Launch configurations (.vscode/launch.json)
@@ -79,14 +87,14 @@
 
 ### Via Command Palette (Ctrl+Shift+P)
 
-| Command | Action |
-|---------|--------|
-| `Terminal: Run Task` → `Rails: Start Server` | Start Rails on port 3000 |
-| `Terminal: Run Task` → `Rails: Database Create` | Create SQLite databases |
-| `Terminal: Run Task` → `Rails: Run Tests (RSpec)` | Run all tests |
-| `Terminal: Run Task` → `Web: Start Dev Server` | Start web on port 5000 |
-| `Terminal: Run Task` → `iOS: Pod Install` | Install iOS pods |
-| `Debug: Start Debugging` → `Rails server` | Start Rails with debugger |
+| Command                                           | Action                    |
+| ------------------------------------------------- | ------------------------- |
+| `Terminal: Run Task` → `Rails: Start Server`      | Start Rails on port 3000  |
+| `Terminal: Run Task` → `Rails: Database Create`   | Create SQLite databases   |
+| `Terminal: Run Task` → `Rails: Run Tests (RSpec)` | Run all tests             |
+| `Terminal: Run Task` → `Web: Start Dev Server`    | Start web on port 5000    |
+| `Terminal: Run Task` → `iOS: Pod Install`         | Install iOS pods          |
+| `Debug: Start Debugging` → `Rails server`         | Start Rails with debugger |
 
 ### Via Terminal (in VS Code)
 
@@ -147,7 +155,7 @@ bundle exec rails console
 ## 📂 Project Structure (Inside Container)
 
 ```
-/workspace/ett/
+/workspaces/squirrel_tracks/
 ├── backend/                  Rails API
 │   ├── app/
 │   ├── config/
@@ -191,7 +199,8 @@ bundle exec rails console
 **Solution**: Start Docker Desktop, wait 30 seconds, retry
 
 **Problem**: "Permission denied while trying to connect to Docker daemon"  
-**Solution**: 
+**Solution**:
+
 ```bash
 # On macOS with Docker Desktop
 sudo dscacheutil -flushcache
@@ -205,6 +214,7 @@ newgrp docker
 
 **Problem**: `bundle install` hangs or fails  
 **Solution**:
+
 ```bash
 # Inside container terminal
 cd backend
@@ -213,12 +223,13 @@ bundle install --no-cache
 ```
 
 **Problem**: "Gem not found"  
-**Solution**: Gems are installed in `/workspace/ett/bundle` (persistent volume), not in container image
+**Solution**: Gems are installed in `/workspaces/squirrel_tracks/bundle` (persistent volume), not in container image
 
 ### Rails server won't start
 
 **Problem**: "Address already in use (port 3000)"  
 **Solution**:
+
 ```bash
 # Kill existing process
 lsof -i :3000 | grep LISTEN | awk '{print $2}' | xargs kill -9
@@ -228,9 +239,10 @@ bundle exec rails server -p 3001
 
 **Problem**: "Database is locked"  
 **Solution**:
+
 ```bash
 cd backend
-rm db/development.sqlite3
+rm storage/development.sqlite3
 bundle exec rails db:create
 ```
 
@@ -238,6 +250,7 @@ bundle exec rails db:create
 
 **Problem**: Can't access localhost:3000 or localhost:5000  
 **Solution**:
+
 1. Check devcontainer.json has correct `forwardPorts`
 2. In VS Code, check Ports tab (bottom panel)
 3. Click "Forward a Port" if needed
@@ -248,15 +261,18 @@ bundle exec rails db:create
 ## 🌐 Accessing Services
 
 ### From VS Code
+
 - Rails API: `http://localhost:3000`
 - Web Frontend: `http://localhost:5000`
 - Auto-forwarded ports appear in "Ports" tab (bottom panel)
 
 ### From Container Terminal
+
 - Rails API: `http://localhost:3000` (or `http://host.docker.internal:3000` from host)
 - Web Frontend: `http://localhost:5000`
 
 ### From Host Machine (Outside Container)
+
 - Ports are auto-forwarded by VS Code Dev Containers
 - Access same URLs as above
 
@@ -265,16 +281,19 @@ bundle exec rails db:create
 ## 💾 Data Persistence
 
 ### SQLite Databases
+
 - **Stored in**: `backend/db/` (mounted as volume)
 - **Persists**: Even when container exits
 - **Reset**: `bundle exec rails db:reset` (in container)
 
 ### Gems & Dependencies
-- **Stored in**: `/workspace/ett/bundle` (mounted as volume)
+
+- **Stored in**: `/workspaces/squirrel_tracks/bundle` (mounted as volume)
 - **Persists**: Across container rebuilds
 - **Size**: ~2 GB after full install
 
 ### SSH Keys
+
 - **Mounted at**: `/home/vscode/.ssh` (read-only from host)
 - **Use for**: Git operations, GitHub credentials
 
@@ -283,6 +302,7 @@ bundle exec rails db:create
 ## 🔧 Rebuilding Container
 
 ### When to Rebuild
+
 - After editing Dockerfile
 - After major dependency changes in Gemfile
 - When container is corrupted
@@ -290,10 +310,12 @@ bundle exec rails db:create
 ### How to Rebuild
 
 **Option 1: VS Code Command**
+
 1. Press `Ctrl+Shift+P`
 2. Run "Dev Containers: Rebuild Container"
 
 **Option 2: Terminal**
+
 ```bash
 # Outside VS Code (on host)
 docker compose down
@@ -305,14 +327,14 @@ docker system prune
 
 ## 📊 Container Stats
 
-| Metric | Value |
-|--------|-------|
-| Image Size | ~1.5 GB (Ruby 3.3 slim) |
-| Build Time | 2-3 min (first time) |
-| Boot Time | 10-15 sec (subsequent) |
-| Disk Used | ~5 GB (with gems & databases) |
-| Memory (idle) | 200-300 MB |
-| Memory (Rails server running) | 500-800 MB |
+| Metric                        | Value                         |
+| ----------------------------- | ----------------------------- |
+| Image Size                    | ~1.5 GB (Ruby 3.3 slim)       |
+| Build Time                    | 2-3 min (first time)          |
+| Boot Time                     | 10-15 sec (subsequent)        |
+| Disk Used                     | ~5 GB (with gems & databases) |
+| Memory (idle)                 | 200-300 MB                    |
+| Memory (Rails server running) | 500-800 MB                    |
 
 ---
 

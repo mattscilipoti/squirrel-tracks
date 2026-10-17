@@ -1,33 +1,33 @@
-version: '3.8'
+version: "3.8"
 
 services:
   dev:
     build:
       context: .
       dockerfile: .devcontainer/Dockerfile
-    
+
     container_name: ett-dev
-    
-    working_dir: /workspace/ett
-    
+
+    working_dir: /workspaces/squirrel_tracks
+
     volumes:
-      - .:/workspace/ett
-      - bundle_cache:/workspace/ett/bundle
+      - .:/workspaces/squirrel_tracks
+      - bundle_cache:/workspaces/squirrel_tracks/bundle
       - ${HOME}/.ssh:/home/vscode/.ssh:ro
-    
+
     ports:
-      - "3000:3000"  # Rails API
-      - "5000:5000"  # Web Frontend
-    
+      - "3000:3000" # Rails API
+      - "5000:5000" # Web Frontend
+
     environment:
       - RAILS_ENV=development
-      - BUNDLE_PATH=/workspace/ett/bundle
-    
+      - BUNDLE_PATH=/workspaces/squirrel_tracks/bundle
+
     command: /bin/bash
-    
+
     stdin_open: true
     tty: true
-    
+
     networks:
       - ett-network
 

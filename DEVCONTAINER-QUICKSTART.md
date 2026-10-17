@@ -12,6 +12,7 @@
    - Start Docker Desktop
 
 2. **Open Project**
+
    ```bash
    code /home/matt/develop/clients/GreatEnough/ett
    ```
@@ -31,6 +32,7 @@
 ## 📦 What's Pre-Configured
 
 ### Environment
+
 - ✅ Ruby 3.3.0
 - ✅ Rails 7.1.1
 - ✅ Node.js 20 (for web dev)
@@ -38,6 +40,7 @@
 - ✅ Bundler, Git, Curl, Vim
 
 ### VS Code
+
 - ✅ Ruby LSP (syntax, autocomplete, debugging)
 - ✅ Prettier (auto-formatting)
 - ✅ GitLens (git integration)
@@ -46,6 +49,7 @@
 - ✅ Project-specific workspace settings
 
 ### Networking
+
 - ✅ Port 3000 → Rails API (auto-forwarded)
 - ✅ Port 5000 → Web Frontend (auto-forwarded)
 - ✅ GitHub SSH keys mounted (read-only)
@@ -55,6 +59,7 @@
 ## 🚀 Quick Commands
 
 ### Start Backend
+
 ```bash
 # Terminal → Run Task → "Rails: Start Server"
 # OR
@@ -63,6 +68,7 @@ cd backend && bundle exec rails server
 ```
 
 ### Start Web Frontend
+
 ```bash
 # Terminal → Run Task → "Web: Start Dev Server"
 # OR
@@ -71,18 +77,21 @@ cd web-frontend && python3 -m http.server 5000
 ```
 
 ### Rails Console
+
 ```bash
 cd backend && bundle exec rails console
 # Interactive Ruby environment with app loaded
 ```
 
 ### Run Tests
+
 ```bash
 cd backend && bundle exec rspec
 # OR via Task: "Rails: Run Tests (RSpec)"
 ```
 
 ### Database Commands
+
 ```bash
 cd backend
 
@@ -115,6 +124,7 @@ bundle exec rails db:seed         # Load seed data (if any)
 ### View Logs
 
 Terminal → check output from running services
+
 ```bash
 # Rails logs appear in terminal
 # Web server logs appear in separate terminal tab
@@ -125,7 +135,7 @@ Terminal → check output from running services
 ## 📁 Project Layout (Inside Container)
 
 ```
-/workspace/ett/
+/workspaces/squirrel_tracks/
 ├── backend/                      Rails 7.1 API
 │   ├── app/
 │   ├── config/
@@ -176,31 +186,34 @@ Terminal → check output from running services
 
 Press `Ctrl+Shift+P` → type "Tasks:" to see all:
 
-| Task | What It Does |
-|------|--------------|
-| `Rails: Start Server` | Start Rails API (http://localhost:3000) |
-| `Rails: Database Create` | Create SQLite databases |
-| `Rails: Database Migrate` | Run pending migrations |
-| `Rails: Database Reset` | Drop & recreate (dev only) |
-| `Rails: Run Tests (RSpec)` | Run all tests |
-| `Rails: Rails Console` | Interactive Rails console |
-| `Web: Start Dev Server` | Start static web server (http://localhost:5000) |
-| `iOS: Pod Install` | Install iOS dependencies |
-| `ETT: Full Setup` | Run complete setup (first time) |
+| Task                       | What It Does                                    |
+| -------------------------- | ----------------------------------------------- |
+| `Rails: Start Server`      | Start Rails API (http://localhost:3000)         |
+| `Rails: Database Create`   | Create SQLite databases                         |
+| `Rails: Database Migrate`  | Run pending migrations                          |
+| `Rails: Database Reset`    | Drop & recreate (dev only)                      |
+| `Rails: Run Tests (RSpec)` | Run all tests                                   |
+| `Rails: Rails Console`     | Interactive Rails console                       |
+| `Web: Start Dev Server`    | Start static web server (http://localhost:5000) |
+| `iOS: Pod Install`         | Install iOS dependencies                        |
+| `ETT: Full Setup`          | Run complete setup (first time)                 |
 
 ---
 
 ## 🔧 Rebuilding Container
 
 ### When to Rebuild
+
 - After editing `.devcontainer/Dockerfile`
 - After major Gemfile changes
 - If container is corrupted
 
 ### How to Rebuild
+
 ```
 Ctrl+Shift+P → "Dev Containers: Rebuild Container"
 ```
+
 Wait 2-3 minutes for rebuild.
 
 ---
@@ -208,15 +221,18 @@ Wait 2-3 minutes for rebuild.
 ## 💾 Data Persistence
 
 ### SQLite Databases
+
 - Location: `backend/db/*.sqlite3`
 - Persists: Even after stopping container
 - Reset: `bundle exec rails db:reset`
 
 ### Gem Dependencies
-- Location: `/workspace/ett/bundle` (Docker volume)
+
+- Location: `/workspaces/squirrel_tracks/bundle` (Docker volume)
 - Persists: Across container rebuilds
 
 ### SSH Keys
+
 - Mounted at: `/home/vscode/.ssh` (read-only)
 - Use for: Git authentication with GitHub
 
@@ -225,14 +241,17 @@ Wait 2-3 minutes for rebuild.
 ## 🌐 Accessing Services
 
 **From Inside Container**:
+
 - Rails: `http://localhost:3000`
 - Web: `http://localhost:5000`
 
 **From VS Code (Host Machine)**:
+
 - Ports auto-forwarded
 - Same URLs as above
 
 **From Browser on Host**:
+
 - Click "Open in Browser" in Ports tab (bottom panel)
 - Or manually: `http://localhost:3000` or `http://localhost:5000`
 
@@ -243,14 +262,17 @@ Wait 2-3 minutes for rebuild.
 ### Container Won't Start
 
 **"Docker daemon not running"**
+
 - Start Docker Desktop, wait 30 sec, retry
 
 **"Permission denied"** (Linux only)
+
 - Run: `sudo usermod -aG docker $USER` then log out/back in
 
 ### Services Won't Start
 
 **"Address already in use (port 3000)"**
+
 ```bash
 # Inside container terminal
 kill $(lsof -t -i:3000)
@@ -259,15 +281,17 @@ bundle exec rails server -p 3001
 ```
 
 **"Database is locked"**
+
 ```bash
 cd backend
-rm db/development.sqlite3
+rm storage/development.sqlite3
 bundle exec rails db:create
 ```
 
 ### Dependencies Missing
 
 **"Gem not found" after Gemfile change**
+
 ```bash
 cd backend
 rm Gemfile.lock
@@ -275,6 +299,7 @@ bundle install
 ```
 
 **"Node modules not found"**
+
 ```bash
 npm install
 ```
@@ -293,12 +318,14 @@ npm install
 ## 🆚 Dev Container vs. Old Setup
 
 ### Old (Manual)
+
 - ❌ Install Ruby, PostgreSQL, dependencies manually
 - ❌ Risk of version conflicts
 - ❌ Different setup on macOS vs Linux vs Windows
 - ⏱️ 30-60 min setup time
 
 ### New (Dev Container) ✨
+
 - ✅ One click: "Reopen in Container"
 - ✅ Identical environment for all developers
 - ✅ Works on macOS, Linux, Windows

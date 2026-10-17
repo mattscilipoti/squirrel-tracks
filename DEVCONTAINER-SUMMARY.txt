@@ -141,7 +141,7 @@ SQLite Databases:
   • Reset:   bundle exec rails db:reset
 
 Gem Dependencies:
-  • Location: /workspace/ett/bundle (Docker volume)
+  • Location: /workspaces/squirrel_tracks/bundle (Docker volume)
   • Persists: Across container rebuilds
 
 SSH Keys:
@@ -211,7 +211,7 @@ How to rebuild:
 
 "Database is locked"
   → cd backend
-     rm db/development.sqlite3
+     rm storage/development.sqlite3
      bundle exec rails db:create
 
 "Gem not found"
