@@ -29,6 +29,10 @@ echo -e "${BLUE}📦 Installing workspace gems (root Gemfile)...${NC}"
 bundle install
 echo ""
 
+echo -e "${BLUE}📦 Installing workspace npm tools (ESLint, Prettier)...${NC}"
+npm ci --no-fund --no-audit
+echo ""
+
 echo -e "${BLUE}📦 Installing backend dependencies...${NC}"
 cd backend
 bundle install
