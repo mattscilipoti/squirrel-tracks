@@ -6,3 +6,8 @@ tmp/
 .env
 .env.local
 coverage/
+
+# Local SQLite databases (keep the directory)
+/storage/*
+!/storage/.keep
+/db/*.sqlite3*
