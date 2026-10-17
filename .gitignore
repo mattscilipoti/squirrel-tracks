@@ -25,3 +25,7 @@ temp/
 
 # Node
 node_modules/
+
+# Installed gems (BUNDLE_PATH); use vendor/cache for offline installs
+bundle/
+backend/bundle/
