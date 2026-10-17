@@ -11,6 +11,8 @@ const rules = {
 };
 
 export default [
+  // Installed gems (BUNDLE_PATH), at the root and in backend/
+  { ignores: ["**/bundle/"] },
   {
     files: ["web-frontend/js/**/*.js"],
     languageOptions: {
