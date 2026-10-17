@@ -222,6 +222,24 @@ legacy grid conversion, and late-night intervals.
 Reusable-task tests cover cross-day IDs, independent day links, name uniqueness,
 shared renames, and additive daily/all-days totals.
 
+### Deploying to GitHub Pages
+
+The web frontend is deployed to GitHub Pages using the `gh-pages` branch via
+`git subtree push` ([reference](https://gist.github.com/cobyism/4730490)).
+
+```bash
+git subtree push --prefix web-frontend origin gh-pages
+```
+
+If the `gh-pages` branch already exists and needs a fresh push:
+
+```bash
+git push origin :gh-pages && git subtree push --prefix web-frontend origin gh-pages
+```
+
+In the GitHub repo settings, configure Pages to deploy from the `gh-pages`
+branch using the root folder (`/`).
+
 ---
 
 ## Phase 3: iOS App

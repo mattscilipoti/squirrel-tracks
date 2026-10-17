@@ -52,6 +52,47 @@
       </div>
     </div>
 
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal hidden">
+      <div class="modal-content">
+        <h2 id="loginModalTitle">Sign In</h2>
+        <p id="loginModalSubtitle">Sign in to access your data.</p>
+        <p id="loginError" class="setup-error" role="alert" hidden></p>
+        <p id="loginSuccess" class="setup-success" role="status" hidden></p>
+        <form id="loginForm">
+          <label>
+            Email:
+            <input
+              type="email"
+              id="loginEmailInput"
+              placeholder="you@example.com"
+              required
+              autocomplete="email"
+            />
+          </label>
+          <label>
+            Password:
+            <input
+              type="password"
+              id="loginPasswordInput"
+              placeholder="Password"
+              required
+              minlength="6"
+              autocomplete="current-password"
+            />
+          </label>
+          <div class="modal-buttons">
+            <button type="submit" id="loginSubmitBtn" class="btn btn-primary">
+              Sign In
+            </button>
+          </div>
+        </form>
+        <p class="help-text">
+          <a href="#" id="loginToggleLink">Need an account? Sign up</a>
+        </p>
+      </div>
+    </div>
+
     <div class="container">
       <div
         id="squirrelTrailDecor"
@@ -69,6 +110,15 @@
               <span class="trail-print print-three">🐾</span>
             </div>
           </div>
+          <button
+            id="signOutBtn"
+            class="btn-sign-out"
+            type="button"
+            title="Sign out of your account"
+            hidden
+          >
+            Sign out
+          </button>
           <p class="subtitle">
             See where your day goes and discover your patterns of focus. Add
             tasks and fill a bubble for each 15 minutes spent on them. The
@@ -360,74 +410,178 @@
     <script src="js/time-calculations.js"></script>
     <script src="js/app-grid.js"></script>
     <script>
-      // Setup modal for Supabase credentials
+      // ── Supabase setup + auth flow ──────────────────────────────────
       document.addEventListener("DOMContentLoaded", () => {
-        const modal = document.getElementById("supabaseSetupModal");
-        const form = document.getElementById("supabaseSetupForm");
+        // ── Setup modal elements ────────────────────────────────────
+        const setupModal = document.getElementById("supabaseSetupModal");
+        const setupForm = document.getElementById("supabaseSetupForm");
         const urlInput = document.getElementById("supabaseUrlInput");
         const keyInput = document.getElementById("supabaseKeyInput");
         const skipBtn = document.getElementById("skipSupabaseBtn");
-        const errorMessage = document.getElementById("supabaseSetupError");
+        const setupError = document.getElementById("supabaseSetupError");
 
-        window.showSupabaseSetupModal = (message) => {
+        // ── Login modal elements ────────────────────────────────────
+        const loginModal = document.getElementById("loginModal");
+        const loginForm = document.getElementById("loginForm");
+        const loginEmail = document.getElementById("loginEmailInput");
+        const loginPassword = document.getElementById("loginPasswordInput");
+        const loginSubmitBtn = document.getElementById("loginSubmitBtn");
+        const loginError = document.getElementById("loginError");
+        const loginSuccess = document.getElementById("loginSuccess");
+        const loginToggle = document.getElementById("loginToggleLink");
+        const loginTitle = document.getElementById("loginModalTitle");
+        const loginSubtitle = document.getElementById("loginModalSubtitle");
+        const signOutBtn = document.getElementById("signOutBtn");
+
+        let isSignUp = false;
+
+        // ── Helpers ─────────────────────────────────────────────────
+
+        function showLogin() {
+          loginError.hidden = true;
+          loginSuccess.hidden = true;
+          loginModal.classList.remove("hidden");
+        }
+
+        function hideLogin() {
+          loginModal.classList.add("hidden");
+        }
+
+        function showSetup(message) {
           if (message) {
-            errorMessage.textContent = message;
-            errorMessage.hidden = false;
+            setupError.textContent = message;
+            setupError.hidden = false;
           }
           urlInput.value = localStorage.getItem("supabase_url") || "";
           keyInput.value = localStorage.getItem("supabase_key") || "";
-          modal.classList.remove("hidden");
-        };
-
-        // Check if credentials already saved
-        const savedUrl = localStorage.getItem("supabase_url");
-        const savedKey = localStorage.getItem("supabase_key");
-
-        if (
-          savedUrl &&
-          savedKey &&
-          savedUrl !== "https://YOUR_PROJECT.supabase.co"
-        ) {
-          // Credentials exist, hide modal and initialize
-          modal.classList.add("hidden");
-          initSupabaseClient(savedUrl, savedKey);
-        } else {
-          // Show modal
-          modal.classList.remove("hidden");
-
-          // Pre-fill if partially saved
-          if (savedUrl) urlInput.value = savedUrl;
-          if (savedKey) keyInput.value = savedKey;
+          setupModal.classList.remove("hidden");
         }
 
-        // Handle form submit
-        form.addEventListener("submit", (e) => {
+        // Expose for supabase-client error recovery.
+        window.showSupabaseSetupModal = showSetup;
+
+        /** Called after successful auth to boot the app. */
+        function bootApp(session) {
+          initSupabaseClient(SUPABASE_URL, SUPABASE_API_KEY, session.access_token);
+          signOutBtn.hidden = false;
+          if (window.tracker) {
+            window.tracker.setupSupabase();
+          }
+        }
+
+        // ── Toggle sign-in / sign-up ────────────────────────────────
+        loginToggle.addEventListener("click", (e) => {
+          e.preventDefault();
+          isSignUp = !isSignUp;
+          loginTitle.textContent = isSignUp ? "Create Account" : "Sign In";
+          loginSubtitle.textContent = isSignUp
+            ? "Create a new account."
+            : "Sign in to access your data.";
+          loginSubmitBtn.textContent = isSignUp ? "Create Account" : "Sign In";
+          loginToggle.textContent = isSignUp
+            ? "Already have an account? Sign in"
+            : "Need an account? Sign up";
+          loginPassword.autocomplete = isSignUp
+            ? "new-password"
+            : "current-password";
+          loginError.hidden = true;
+          loginSuccess.hidden = true;
+        });
+
+        // ── Login form submit ───────────────────────────────────────
+        loginForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const email = loginEmail.value.trim();
+          const password = loginPassword.value;
+          if (!email || !password) return;
+
+          loginError.hidden = true;
+          loginSuccess.hidden = true;
+          loginSubmitBtn.disabled = true;
+          loginSubmitBtn.textContent = isSignUp
+            ? "Creating account..."
+            : "Signing in...";
+
+          try {
+            const auth = getSupabaseAuth();
+            let session;
+            if (isSignUp) {
+              session = await auth.signUp(email, password);
+              if (!session.access_token) {
+                // Email confirmation is enabled; account created but can't
+                // log in until confirmed.
+                loginSuccess.textContent =
+                  "Account created! Check your email to confirm, then sign in.";
+                loginSuccess.hidden = false;
+                loginSubmitBtn.disabled = false;
+                loginSubmitBtn.textContent = "Create Account";
+                return;
+              }
+            } else {
+              session = await auth.signIn(email, password);
+            }
+            hideLogin();
+            bootApp(session);
+          } catch (err) {
+            loginError.textContent = err.message;
+            loginError.hidden = false;
+          } finally {
+            loginSubmitBtn.disabled = false;
+            loginSubmitBtn.textContent = isSignUp
+              ? "Create Account"
+              : "Sign In";
+          }
+        });
+
+        // ── Sign out ────────────────────────────────────────────────
+        signOutBtn.addEventListener("click", async () => {
+          const auth = getSupabaseAuth();
+          if (auth) await auth.signOut();
+          signOutBtn.hidden = true;
+          supabaseClient = null;
+          showLogin();
+        });
+
+        // ── Setup form submit (Supabase URL + key) ──────────────────
+        setupForm.addEventListener("submit", (e) => {
           e.preventDefault();
           const url = urlInput.value.trim();
           const key = keyInput.value.trim();
-
           if (!url || !key) {
             alert("Please enter both URL and API key");
             return;
           }
-
-          // Save and initialize
-          errorMessage.hidden = true;
-          errorMessage.textContent = "";
+          setupError.hidden = true;
           configureSupabase(url, key);
-          modal.classList.add("hidden");
-
-          // Reload tracker to use Supabase
-          if (window.tracker) {
-            window.tracker.setupSupabase();
-          }
+          supabaseAuth = null; // reset auth so it picks up new URL/key
+          setupModal.classList.add("hidden");
+          showLogin();
         });
 
-        // Handle skip button (local only mode)
         skipBtn.addEventListener("click", () => {
-          modal.classList.add("hidden");
+          setupModal.classList.add("hidden");
           console.log("Using local storage only (no cloud sync)");
         });
+
+        // ── Boot sequence ───────────────────────────────────────────
+        (async () => {
+          if (!hasSupabaseConfig()) {
+            // No Supabase credentials yet — show setup modal.
+            setupModal.classList.remove("hidden");
+            return;
+          }
+          setupModal.classList.add("hidden");
+
+          // Supabase is configured — try to restore auth session.
+          const auth = getSupabaseAuth();
+          const session = await auth.restoreSession();
+          if (session) {
+            hideLogin();
+            bootApp(session);
+          } else {
+            showLogin();
+          }
+        })();
       });
     </script>
   </body>
