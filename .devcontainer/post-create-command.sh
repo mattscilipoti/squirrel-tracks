@@ -24,9 +24,13 @@ else
 fi
 echo ""
 
+echo -e "${BLUE}📦 Installing workspace gems (root Gemfile)...${NC}"
+# Install location comes from BUNDLE_PATH (set in devcontainer.json)
+bundle install
+echo ""
+
 echo -e "${BLUE}📦 Installing backend dependencies...${NC}"
 cd backend
-# Install location comes from BUNDLE_PATH (set in devcontainer.json)
 bundle install
 
 echo ""
@@ -42,7 +46,7 @@ echo ""
 cd "$WORKSPACE_DIR"
 
 echo -e "${BLUE}🌐 Web frontend ready${NC}"
-echo -e "   Run: ${YELLOW}cd web-frontend && python3 -m http.server 5000${NC}"
+echo -e "   Run: ${YELLOW}web-frontend/start-server.sh${NC}"
 echo ""
 
 echo -e "${BLUE}📱 iOS app setup${NC}"
