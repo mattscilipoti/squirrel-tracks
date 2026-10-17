@@ -67,8 +67,6 @@
   "ruby.lsp.nesting": true,
   "ruby.lsp.rubyVersionManager": "rbenv",
 
-  "git.ignoreLimitWarning": true,
-
   "[markdown]": {
     "files.trimTrailingWhitespace": false,
     "editor.wordWrap": "on"
