@@ -1,0 +1,15 @@
+{
+  "name": "squirrel-tracks",
+  "private": true,
+  "scripts": {
+    "lint": "eslint web-frontend/js",
+    "format": "prettier --write web-frontend",
+    "format:check": "prettier --check web-frontend",
+    "test": "node --test web-frontend/js/*.test.cjs"
+  },
+  "devDependencies": {
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.9"
+  }
+}

@@ -1,0 +1,6 @@
+node_modules/
+bundle/
+backend/
+ios-app/
+supabase/.temp/
+*.sqlite3

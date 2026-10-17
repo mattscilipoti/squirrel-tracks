@@ -427,7 +427,7 @@ class GridTaskTracker {
       (_, index) =>
         ((index + 0.5 + (Math.random() - 0.5) * 0.38) / fragmentCount) * 100,
     );
-    for (const [index, top] of positions.entries()) {
+    for (const top of positions) {
       const fragment = document.createElement("div");
       fragment.className = `squirrel-print-fragment ${Math.random() < 0.5 ? "is-left" : "is-right"}`;
       fragment.dataset.trailPosition = String(top / 100);
@@ -1031,7 +1031,6 @@ class GridTaskTracker {
         intervalIdx < TimeCalculations.intervalCount;
         intervalIdx++
       ) {
-        const hourIdx = Math.floor(intervalIdx / 4);
 
         const cell = document.createElement("td");
         cell.dataset.taskIdx = taskIdx;

@@ -22,3 +22,6 @@ temp/
 *.swp
 *.swo
 *~
+
+# Node
+node_modules/

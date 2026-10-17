@@ -76,7 +76,6 @@ class EmergenTaskTracker {
   }
 
   updateConnectionStatus(connected) {
-    const statusClass = connected ? "connected" : "disconnected";
     const statusText = connected ? "Connected to backend" : "Offline mode";
 
     // Update button visibility/state
