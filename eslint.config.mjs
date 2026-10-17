@@ -46,7 +46,10 @@ export default [
       // Files redeclare the app globals above when they define them.
       "no-redeclare": ["error", { builtinGlobals: false }],
       // Top-level functions are consumed by other script tags.
-      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", caughtErrors: "none", vars: "local" }],
+      "no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", caughtErrors: "none", vars: "local" },
+      ],
     },
   },
   {
