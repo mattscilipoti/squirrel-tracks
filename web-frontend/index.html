@@ -33,14 +33,8 @@
             />
           </label>
           <div class="modal-buttons">
-            <button type="submit" class="btn btn-primary">
-              Connect to Supabase
-            </button>
-            <button
-              type="button"
-              id="skipSupabaseBtn"
-              class="btn btn-secondary"
-            >
+            <button type="submit" class="btn btn-primary">Connect to Supabase</button>
+            <button type="button" id="skipSupabaseBtn" class="btn btn-secondary">
               Use Local Only
             </button>
           </div>
@@ -94,11 +88,7 @@
     </div>
 
     <div class="container">
-      <div
-        id="squirrelTrailDecor"
-        class="squirrel-trail-decor"
-        aria-hidden="true"
-      ></div>
+      <div id="squirrelTrailDecor" class="squirrel-trail-decor" aria-hidden="true"></div>
       <header>
         <div class="header-top">
           <div class="brand-lockup">
@@ -120,11 +110,10 @@
             Sign out
           </button>
           <p class="subtitle">
-            See where your day goes and discover your patterns of focus. Add
-            tasks and fill a bubble for each 15 minutes spent on them. The
-            built-in reminder timer gives a gentle bell at an interval you
-            choose, helping you check in and keep your record up to date. Based
-            on
+            See where your day goes and discover your patterns of focus. Add tasks and
+            fill a bubble for each 15 minutes spent on them. The built-in reminder timer
+            gives a gentle bell at an interval you choose, helping you check in and keep
+            your record up to date. Based on
             <a
               href="https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/"
               target="_blank"
@@ -142,12 +131,7 @@
               aria-describedby="dateWarning"
               title="Load the session for this date"
             />
-            <span
-              id="dateWarning"
-              class="date-warning"
-              role="status"
-              hidden
-            ></span>
+            <span id="dateWarning" class="date-warning" role="status" hidden></span>
             <button
               id="todayBtn"
               class="btn-small"
@@ -158,9 +142,7 @@
               Today
             </button>
           </div>
-          <label>
-            TASKS: <span class="form-value" id="tasksValue">0</span>
-          </label>
+          <label> TASKS: <span class="form-value" id="tasksValue">0</span> </label>
           <label>
             FIRST ACTIVITY:
             <span class="form-value" id="firstActivityDisplay">--</span>
@@ -331,11 +313,7 @@
               class="notes-textarea"
               placeholder="Keep other notes here"
             ></textarea>
-            <div
-              class="timer-widget"
-              role="group"
-              aria-label="Repeating reminder"
-            >
+            <div class="timer-widget" role="group" aria-label="Repeating reminder">
               <div class="timer-display-small">
                 <div
                   class="time-small"
@@ -382,9 +360,7 @@
                     aria-label="Bell volume"
                     title="Bell volume; muting preserves this setting"
                   />
-                  <output id="bellVolumeValue" for="bellVolumeInput"
-                    >100%</output
-                  >
+                  <output id="bellVolumeValue" for="bellVolumeInput">100%</output>
                 </div>
               </div>
             </div>
@@ -400,8 +376,8 @@
 
       <footer>
         <p>
-          THE PRINTABLE CEO™ ETT02 | COPYRIGHT © 2006 DAVID SEAH • BETTER LIVING
-          THROUGH NEW MEDIA • WWW.DAVIDSEAH.COM
+          THE PRINTABLE CEO™ ETT02 | COPYRIGHT © 2006 DAVID SEAH • BETTER LIVING THROUGH
+          NEW MEDIA • WWW.DAVIDSEAH.COM
         </p>
       </footer>
     </div>
@@ -481,9 +457,7 @@
           loginToggle.textContent = isSignUp
             ? "Already have an account? Sign in"
             : "Need an account? Sign up";
-          loginPassword.autocomplete = isSignUp
-            ? "new-password"
-            : "current-password";
+          loginPassword.autocomplete = isSignUp ? "new-password" : "current-password";
           loginError.hidden = true;
           loginSuccess.hidden = true;
         });
@@ -498,9 +472,7 @@
           loginError.hidden = true;
           loginSuccess.hidden = true;
           loginSubmitBtn.disabled = true;
-          loginSubmitBtn.textContent = isSignUp
-            ? "Creating account..."
-            : "Signing in...";
+          loginSubmitBtn.textContent = isSignUp ? "Creating account..." : "Signing in...";
 
           try {
             const auth = getSupabaseAuth();
@@ -527,9 +499,7 @@
             loginError.hidden = false;
           } finally {
             loginSubmitBtn.disabled = false;
-            loginSubmitBtn.textContent = isSignUp
-              ? "Create Account"
-              : "Sign In";
+            loginSubmitBtn.textContent = isSignUp ? "Create Account" : "Sign In";
           }
         });
 

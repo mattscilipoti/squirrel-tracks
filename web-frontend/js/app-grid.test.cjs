@@ -66,15 +66,9 @@ function fixture(date = "2026-10-14", options = {}) {
     },
   });
   for (const file of ["time-calculations.js", "app-grid.js"]) {
-    vm.runInContext(
-      fs.readFileSync(path.join(__dirname, file), "utf8"),
-      context,
-    );
+    vm.runInContext(fs.readFileSync(path.join(__dirname, file), "utf8"), context);
   }
-  const tracker = vm.runInContext(
-    "Object.create(GridTaskTracker.prototype)",
-    context,
-  );
+  const tracker = vm.runInContext("Object.create(GridTaskTracker.prototype)", context);
   Object.assign(tracker, {
     date,
     sessionId: "yesterday",
@@ -182,8 +176,7 @@ test("full sync attaches equal-named tasks by distinct IDs rather than matching 
     }),
     attachTask: async (session, id) => attachments.push(id),
     getSessionIntervals: async () => [],
-    createTask: async () =>
-      assert.fail("Created a copy instead of reusing the ID"),
+    createTask: async () => assert.fail("Created a copy instead of reusing the ID"),
   };
   tracker.loadSessionFromSupabase = async () => {};
   await tracker.syncAndReloadFromSupabase();
@@ -199,10 +192,7 @@ test("non-today dates show an explicit warning and highlight; today clears them"
     assert.equal(elements.dateInput.value, date);
     assert.equal(elements.dateInput.classList.contains("is-other-day"), true);
     assert.equal(elements.dateWarning.hidden, false);
-    assert.equal(
-      elements.dateWarning.textContent,
-      `Not today: editing ${date}`,
-    );
+    assert.equal(elements.dateWarning.textContent, `Not today: editing ${date}`);
     assert.equal(elements.todayBtn.hidden, false);
   }
   tracker.date = "2026-10-15";
@@ -363,10 +353,7 @@ test("renaming keeps the task ID and bubbles and saves the cloud name", async ()
   assert.deepEqual(writes, [
     { session: "yesterday", task: "task-id", name: "Renamed task" },
   ]);
-  assert.equal(
-    JSON.parse(storage.get("ettGridState")).tasks[0],
-    "Renamed task",
-  );
+  assert.equal(JSON.parse(storage.get("ettGridState")).tasks[0], "Renamed task");
   assert.equal(container.inert, false);
 });
 
@@ -387,9 +374,7 @@ test("database duplicate-name race rolls back the optimistic local task", async 
   tracker.updateSummary = () => {};
   tracker.db = {
     createTask: async () => {
-      throw new Error(
-        "Task name already exists; reuse the existing task instead.",
-      );
+      throw new Error("Task name already exists; reuse the existing task instead.");
     },
   };
   tracker.addTask("New task");
@@ -450,15 +435,12 @@ test("local-only tasks can be renamed without a database connection", async () =
 
 test("database refresh finds populated session 5 instead of empty sessions 6 and 7", async () => {
   let confirmation;
-  const { tracker, storage, elements, container, alerts } = fixture(
-    "2026-10-15",
-    {
-      confirm: (message) => {
-        confirmation = message;
-        return true;
-      },
+  const { tracker, storage, elements, container, alerts } = fixture("2026-10-15", {
+    confirm: (message) => {
+      confirmation = message;
+      return true;
     },
-  );
+  });
   tracker.sessionId = 6;
   tracker.db = {
     getSessionsForDate: async () => [
@@ -565,10 +547,7 @@ test("saved custom interval and muted bell survive reload", () => {
   assert.equal(elements.enableBellBtn.hidden, true);
   tracker.timerTick(300000);
   assert.equal(elements.timerDisplay.textContent, "5:00");
-  assert.equal(
-    JSON.parse(storage.get("ettReminderSettings")).bellEnabled,
-    false,
-  );
+  assert.equal(JSON.parse(storage.get("ettReminderSettings")).bellEnabled, false);
 });
 
 test("bell volume defaults to the existing level and persists independently of mute", () => {
@@ -659,13 +638,7 @@ test("bell requires enabled, unlocked audio", () => {
 test("audio enable button is shown for unknown or inactive audio and hidden when ready or muted", () => {
   const { tracker, elements } = fixture();
   tracker.bellEnabled = true;
-  for (const state of [
-    undefined,
-    "suspended",
-    "interrupted",
-    "closed",
-    "running",
-  ]) {
+  for (const state of [undefined, "suspended", "interrupted", "closed", "running"]) {
     tracker.audioContext = state ? { state } : undefined;
     tracker.updateBellControl();
     assert.equal(elements.enableBellBtn.hidden, state === "running");
@@ -764,9 +737,7 @@ test("loading a legacy local grid shifts 9 AM entries to slot 36", () => {
 test("cloud restoration accepts the final interval of a full day", async () => {
   const { tracker } = fixture("2026-10-15");
   tracker.db = {
-    getSessionIntervals: async () => [
-      { task_id: "task-id", interval_index: 95 },
-    ],
+    getSessionIntervals: async () => [{ task_id: "task-id", interval_index: 95 }],
   };
   for (const method of [
     "renderGrid",
@@ -788,9 +759,7 @@ test("cloud restoration accepts the final interval of a full day", async () => {
 test("rollover archives yesterday and starts a clean local day", () => {
   const { tracker, storage, elements } = fixture();
   assert.equal(tracker.rolloverDailySession(new Date(2026, 9, 15, 0, 0)), true);
-  const archive = JSON.parse(storage.get("ettGridHistory"))[
-    "2026-10-14:yesterday"
-  ];
+  const archive = JSON.parse(storage.get("ettGridHistory"))["2026-10-14:yesterday"];
   assert.equal(archive.date, "2026-10-14");
   assert.equal(archive.sessionId, "yesterday");
   assert.deepEqual(archive.tasks, ["Task"]);
@@ -847,8 +816,7 @@ test("rollover waits for active initialization, syncs, and task writes", () => {
     "pendingWrites",
   ]) {
     const { tracker, storage } = fixture();
-    tracker[flag] =
-      flag === "pendingWrites" ? new Set([Promise.resolve()]) : true;
+    tracker[flag] = flag === "pendingWrites" ? new Set([Promise.resolve()]) : true;
     assert.equal(tracker.rolloverDailySession(new Date(2026, 9, 15)), false);
     assert.equal(storage.size, 0);
     tracker[flag] = flag === "pendingWrites" ? new Set() : false;
@@ -869,8 +837,7 @@ test("cloud initialization does not restore a session from a different day", asy
       return { id: "today" };
     },
   };
-  tracker.loadSessionFromSupabase = async () =>
-    assert.fail("Old session was restored");
+  tracker.loadSessionFromSupabase = async () => assert.fail("Old session was restored");
   await tracker.initializeSession();
   assert.equal(created.length, 1);
   assert.equal(created[0].date, "2026-10-15");
@@ -961,9 +928,7 @@ test("startup looks up today's existing sessions before creating one without a s
   tracker.tasks = [];
   tracker.gridData = [];
   tracker.db = {
-    getSessionsForDate: async () => [
-      { id: 5, date: "2026-10-15", tasks: [{ id: 50 }] },
-    ],
+    getSessionsForDate: async () => [{ id: 5, date: "2026-10-15", tasks: [{ id: 50 }] }],
     createSession: async () => assert.fail("Created a duplicate session"),
   };
   let restored;
@@ -999,8 +964,7 @@ test("startup restores all six tasks and 26 bubbles and persists the recovered p
       return intervals;
     },
     createSession: async () => assert.fail("Created a duplicate session"),
-    updateSession: async () =>
-      assert.fail("Wrote to the cloud during recovery"),
+    updateSession: async () => assert.fail("Wrote to the cloud during recovery"),
   };
   for (const method of [
     "renderGrid",
@@ -1017,10 +981,7 @@ test("startup restores all six tasks and 26 bubbles and persists the recovered p
   assert.equal(saved.sessionId, 5);
   assert.equal(saved.tasks.length, 6);
   assert.equal(saved.gridData.flat().filter(Boolean).length, 26);
-  assert.equal(
-    tracker.selectCloudSession(await tracker.db.getSessionsForDate()).id,
-    5,
-  );
+  assert.equal(tracker.selectCloudSession(await tracker.db.getSessionsForDate()).id, 5);
 });
 
 test("cloud initialization reuses a session from the same day", async () => {

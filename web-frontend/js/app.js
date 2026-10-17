@@ -126,9 +126,7 @@ class EmergenTaskTracker {
     this.intervalCount++;
 
     // Mark bubble as completed
-    const bubble = document.querySelector(
-      `[data-interval="${this.intervalCount}"]`,
-    );
+    const bubble = document.querySelector(`[data-interval="${this.intervalCount}"]`);
     if (bubble) {
       bubble.classList.add("completed");
     }
@@ -177,9 +175,7 @@ class EmergenTaskTracker {
     if (this.sessionId && !this.isInitializing) {
       this.syncTask(taskName);
     } else if (!this.sessionId) {
-      console.warn(
-        "Session not ready yet, task will sync when backend connects",
-      );
+      console.warn("Session not ready yet, task will sync when backend connects");
     }
   }
 
@@ -200,9 +196,7 @@ class EmergenTaskTracker {
     this.tasks.forEach((task, idx) => {
       const intervalsDone =
         this.intervalCount > 0
-          ? Math.ceil(
-              ((idx + 1) / (this.tasks.length || 1)) * this.intervalCount,
-            )
+          ? Math.ceil(((idx + 1) / (this.tasks.length || 1)) * this.intervalCount)
           : 0;
       html += `
                 <div class="summary-item">
@@ -247,11 +241,7 @@ class EmergenTaskTracker {
       const duration = this.intervalCount * 15;
       const taskData = { duration_minutes: duration };
 
-      const result = await this.api.updateTask(
-        this.sessionId,
-        currentTask.id,
-        taskData,
-      );
+      const result = await this.api.updateTask(this.sessionId, currentTask.id, taskData);
       console.log("Task duration updated:", result);
     } catch (error) {
       console.error("Failed to update task duration:", error);
@@ -299,8 +289,8 @@ class EmergenTaskTracker {
       timeRemaining: this.timeRemaining,
       intervalCount: this.intervalCount,
       tasks: this.tasks, // Now includes task IDs
-      bubbles: Array.from(document.querySelectorAll(".bubble.completed")).map(
-        (b) => parseInt(b.dataset.interval),
+      bubbles: Array.from(document.querySelectorAll(".bubble.completed")).map((b) =>
+        parseInt(b.dataset.interval),
       ),
     };
     localStorage.setItem("ettState", JSON.stringify(state));
@@ -320,9 +310,7 @@ class EmergenTaskTracker {
     // Restore bubble states
     if (state.bubbles) {
       state.bubbles.forEach((intervalNum) => {
-        const bubble = document.querySelector(
-          `[data-interval="${intervalNum}"]`,
-        );
+        const bubble = document.querySelector(`[data-interval="${intervalNum}"]`);
         if (bubble) bubble.classList.add("completed");
       });
     }

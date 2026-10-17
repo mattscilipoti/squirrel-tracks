@@ -62,17 +62,19 @@ class SupabaseAuth {
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error_description || data.msg || data.error || `HTTP ${res.status}`);
+      throw new Error(
+        data.error_description || data.msg || data.error || `HTTP ${res.status}`,
+      );
     }
     return data;
   }
 
   /** Sign in with email + password. Returns session data. */
   async signIn(email, password) {
-    const data = await this._authRequest(
-      "/token?grant_type=password",
-      { email, password },
-    );
+    const data = await this._authRequest("/token?grant_type=password", {
+      email,
+      password,
+    });
     this._saveSession(data);
     this._scheduleRefresh(data.expires_in);
     return data;
@@ -94,10 +96,9 @@ class SupabaseAuth {
     const session = this.getSession();
     if (!session?.refresh_token) return null;
     try {
-      const data = await this._authRequest(
-        "/token?grant_type=refresh_token",
-        { refresh_token: session.refresh_token },
-      );
+      const data = await this._authRequest("/token?grant_type=refresh_token", {
+        refresh_token: session.refresh_token,
+      });
       this._saveSession(data);
       this._scheduleRefresh(data.expires_in);
       return data;
@@ -307,11 +308,7 @@ class SupabaseClient {
   }
 
   getTaskCatalog() {
-    return this.getAllRows(
-      "task_totals",
-      "id,name,interval_count",
-      "name.asc,id.asc",
-    );
+    return this.getAllRows("task_totals", "id,name,interval_count", "name.asc,id.asc");
   }
 
   getTaskDayTotals() {

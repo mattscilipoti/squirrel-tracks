@@ -21,18 +21,12 @@ test("sessions load global tasks through daily memberships", async () => {
   const db = client();
   db.request = async (method, route) => {
     assert.equal(method, "GET");
-    assert.match(
-      decodeURIComponent(route),
-      /session_tasks\(task:tasks\(\*\)\)/,
-    );
+    assert.match(decodeURIComponent(route), /session_tasks\(task:tasks\(\*\)\)/);
     return [{ id: 1, session_tasks: [{ task: { id: 5, name: "Shared" } }] }];
   };
   const session = await db.getSession(1);
   assert.equal(session.tasks[0].id, 5);
-  assert.equal(
-    (await db.getSessionsForDate("2026-10-16"))[0].tasks[0].name,
-    "Shared",
-  );
+  assert.equal((await db.getSessionsForDate("2026-10-16"))[0].tasks[0].name, "Shared");
 });
 
 test("creating a task attaches its stable ID without single-day ownership", async () => {

@@ -51,9 +51,7 @@ class GridTaskTracker {
     this.updateTimeCalculations();
     this.initializeSquirrelTrails();
 
-    this.currentTimeObserver = new ResizeObserver(() =>
-      this.updateCurrentTimeLine(),
-    );
+    this.currentTimeObserver = new ResizeObserver(() => this.updateCurrentTimeLine());
     this.currentTimeObserver.observe(document.getElementById("timeGrid"));
     document.addEventListener("visibilitychange", () => {
       this.updateTimeCalculations();
@@ -100,8 +98,7 @@ class GridTaskTracker {
       if (session) {
         if (
           this.tasks.length &&
-          (String(session.id) !== String(this.sessionId) ||
-            !session.tasks?.length)
+          (String(session.id) !== String(this.sessionId) || !session.tasks?.length)
         ) {
           console.warn(
             "Keeping local tasks; use Refresh from DB to confirm replacing them with the saved daily session.",
@@ -142,8 +139,7 @@ class GridTaskTracker {
   }
 
   selectCloudSession(sessions) {
-    const populated = (session) =>
-      session.tasks?.length || session.intervals?.length;
+    const populated = (session) => session.tasks?.length || session.intervals?.length;
     const current = sessions.find(
       (session) => String(session.id) === String(this.sessionId),
     );
@@ -196,10 +192,7 @@ class GridTaskTracker {
     await this.refreshTaskCatalog();
     this.restoreSessionData(session, expectedDate);
     const taskIndexById = new Map(
-      this.tasks.map((taskName, index) => [
-        String(this.getTaskId(index)),
-        index,
-      ]),
+      this.tasks.map((taskName, index) => [String(this.getTaskId(index)), index]),
     );
 
     intervals.forEach((interval) => {
@@ -227,9 +220,7 @@ class GridTaskTracker {
       this.db.getTaskCatalog(),
       this.db.getTaskDayTotals(),
     ]);
-    const local = (this.taskCatalog || []).filter(
-      (task) => !this.isCloudTaskId(task.id),
-    );
+    const local = (this.taskCatalog || []).filter((task) => !this.isCloudTaskId(task.id));
     this.taskCatalog = [...catalog, ...local];
     this.taskDayTotals = totals;
     localStorage.setItem("ettTaskCatalog", JSON.stringify(this.taskCatalog));
@@ -270,9 +261,7 @@ class GridTaskTracker {
   async reuseTask(id) {
     this.ensureTaskIds();
     if (this.taskIds.some((taskId) => String(taskId) === String(id))) return;
-    const task = this.taskCatalog?.find(
-      (entry) => String(entry.id) === String(id),
-    );
+    const task = this.taskCatalog?.find((entry) => String(entry.id) === String(id));
     if (!task) throw new Error("Choose an existing task.");
     if (this.isFullSyncing || this.isInitializingSession || this.isSyncing)
       throw new Error("Wait for syncing to finish.");
@@ -298,22 +287,16 @@ class GridTaskTracker {
   }
 
   initializeUI() {
-    document
-      .getElementById("existingTaskSelect")
-      .addEventListener("change", (event) => {
-        document.getElementById("reuseTaskBtn").disabled = !event.target.value;
-      });
-    document
-      .getElementById("reuseTaskBtn")
-      .addEventListener("click", async () => {
-        try {
-          await this.reuseTask(
-            document.getElementById("existingTaskSelect").value,
-          );
-        } catch (error) {
-          alert(error.message || "Could not reuse the task.");
-        }
-      });
+    document.getElementById("existingTaskSelect").addEventListener("change", (event) => {
+      document.getElementById("reuseTaskBtn").disabled = !event.target.value;
+    });
+    document.getElementById("reuseTaskBtn").addEventListener("click", async () => {
+      try {
+        await this.reuseTask(document.getElementById("existingTaskSelect").value);
+      } catch (error) {
+        alert(error.message || "Could not reuse the task.");
+      }
+    });
     document.getElementById("dateInput").addEventListener("change", (event) => {
       this.changeSessionDate(event.target.value);
     });
@@ -339,11 +322,9 @@ class GridTaskTracker {
       },
       { passive: true },
     );
-    document
-      .getElementById("resumeAutoCenterBtn")
-      .addEventListener("click", () => {
-        this.resumeAutoCentering();
-      });
+    document.getElementById("resumeAutoCenterBtn").addEventListener("click", () => {
+      this.resumeAutoCentering();
+    });
 
     document
       .getElementById("reminderMinutesInput")
@@ -358,26 +339,20 @@ class GridTaskTracker {
         this.timerTick();
         this.saveReminderSettings();
       });
-    document
-      .getElementById("bellEnabledInput")
-      .addEventListener("change", (event) => {
-        this.bellEnabled = event.target.checked;
-        this.updateBellVolume();
-        this.updateBellControl();
-        this.saveReminderSettings();
-        if (this.bellEnabled) this.enableBellAudio();
-      });
-    document
-      .getElementById("bellVolumeInput")
-      .addEventListener("input", (event) => {
-        this.setBellVolume(Number(event.target.value));
-      });
-    document
-      .getElementById("enableBellBtn")
-      .addEventListener("click", async () => {
-        await this.enableBellAudio();
-        this.playReminderBell();
-      });
+    document.getElementById("bellEnabledInput").addEventListener("change", (event) => {
+      this.bellEnabled = event.target.checked;
+      this.updateBellVolume();
+      this.updateBellControl();
+      this.saveReminderSettings();
+      if (this.bellEnabled) this.enableBellAudio();
+    });
+    document.getElementById("bellVolumeInput").addEventListener("input", (event) => {
+      this.setBellVolume(Number(event.target.value));
+    });
+    document.getElementById("enableBellBtn").addEventListener("click", async () => {
+      await this.enableBellAudio();
+      this.playReminderBell();
+    });
 
     // Header fields
     document
@@ -391,11 +366,9 @@ class GridTaskTracker {
     document
       .getElementById("addTaskBtn")
       .addEventListener("click", () => this.addTaskFromInput());
-    document
-      .getElementById("newTaskInput")
-      .addEventListener("keypress", (e) => {
-        if (e.key === "Enter") this.addTaskFromInput();
-      });
+    document.getElementById("newTaskInput").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") this.addTaskFromInput();
+    });
 
     // Grid actions
     document
@@ -424,8 +397,7 @@ class GridTaskTracker {
     const fragmentCount = 5;
     const positions = Array.from(
       { length: fragmentCount },
-      (_, index) =>
-        ((index + 0.5 + (Math.random() - 0.5) * 0.38) / fragmentCount) * 100,
+      (_, index) => ((index + 0.5 + (Math.random() - 0.5) * 0.38) / fragmentCount) * 100,
     );
     for (const top of positions) {
       const fragment = document.createElement("div");
@@ -436,8 +408,7 @@ class GridTaskTracker {
         print.textContent = "🐾";
         print.style.setProperty("--print-index", printIndex);
         print.style.setProperty("--print-offset", `${2 + Math.random() * 4}px`);
-        const angle =
-          (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 18);
+        const angle = (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 18);
         print.style.setProperty("--print-angle", `${angle}deg`);
         fragment.appendChild(print);
       }
@@ -457,8 +428,7 @@ class GridTaskTracker {
     const decor = document.getElementById("squirrelTrailDecor");
     const container = document.querySelector(".container");
     if (!decor || !container) return;
-    const height =
-      decor.clientHeight || container.clientHeight || container.scrollHeight;
+    const height = decor.clientHeight || container.clientHeight || container.scrollHeight;
     const fragments = [...decor.children];
     for (const fragment of fragments) {
       const fragmentHeight = fragment.offsetHeight || 72;
@@ -560,12 +530,9 @@ class GridTaskTracker {
       });
       const taskId = result?.[0]?.id || result?.id;
       this.taskIdMap[taskName] = taskId;
-      const index = this.taskIds?.findIndex(
-        (id) => String(id) === String(localId),
-      );
+      const index = this.taskIds?.findIndex((id) => String(id) === String(localId));
       if (index >= 0) this.taskIds[index] = taskId;
-      else if (localId !== undefined)
-        await this.db.deleteTask(sessionId, taskId);
+      else if (localId !== undefined) await this.db.deleteTask(sessionId, taskId);
       this.replaceCachedTaskId(localId, taskId, taskName);
       await this.refreshTaskCatalog();
       this.updateTaskPicker();
@@ -575,9 +542,7 @@ class GridTaskTracker {
     } catch (error) {
       console.error("Failed to sync task to Supabase:", error);
       if (/duplicate|already exists/i.test(error.message || "")) {
-        const index = this.taskIds.findIndex(
-          (id) => String(id) === String(localId),
-        );
+        const index = this.taskIds.findIndex((id) => String(id) === String(localId));
         if (index >= 0) {
           this.tasks.splice(index, 1);
           this.taskIds.splice(index, 1);
@@ -603,8 +568,7 @@ class GridTaskTracker {
     input.className = "task-name-editor";
     input.value = this.tasks[taskIdx];
     input.setAttribute("aria-label", "Task name");
-    input.title =
-      "Rename this task across all days. Enter to save; Escape to cancel";
+    input.title = "Rename this task across all days. Enter to save; Escape to cancel";
     let finished = false;
     const save = async () => {
       if (finished) return;
@@ -642,8 +606,7 @@ class GridTaskTracker {
     const name = value.trim();
     const previousName = this.tasks[taskIdx];
     if (!name) throw new Error("Enter a task name.");
-    if (previousName === undefined)
-      throw new Error("This task no longer exists.");
+    if (previousName === undefined) throw new Error("This task no longer exists.");
     if (name === previousName) return;
     if (this.findTaskNameConflict(name, this.getTaskId(taskIdx))) {
       throw new Error(
@@ -719,8 +682,7 @@ class GridTaskTracker {
     const history = JSON.parse(localStorage.getItem("ettGridHistory") || "{}");
     for (const state of Object.values(history)) {
       const ids =
-        state.taskIds ||
-        (state.tasks || []).map((task) => state.taskIdMap?.[task]);
+        state.taskIds || (state.tasks || []).map((task) => state.taskIdMap?.[task]);
       state.tasks?.forEach((task, index) => {
         if (String(ids[index]) === String(taskId)) {
           state.tasks[index] = name;
@@ -821,11 +783,8 @@ class GridTaskTracker {
       await this.waitForPendingWrites();
       this.saveToLocalStorage();
       previousState = localStorage.getItem("ettGridState");
-      const history = JSON.parse(
-        localStorage.getItem("ettGridHistory") || "{}",
-      );
-      history[`${this.date}:${this.sessionId || "local"}`] =
-        JSON.parse(previousState);
+      const history = JSON.parse(localStorage.getItem("ettGridHistory") || "{}");
+      history[`${this.date}:${this.sessionId || "local"}`] = JSON.parse(previousState);
       localStorage.setItem("ettGridHistory", JSON.stringify(history));
       const cached = this.selectCloudSession(
         Object.values(history)
@@ -846,8 +805,7 @@ class GridTaskTracker {
             date,
           });
           const created = result?.[0] || result;
-          if (!created?.id)
-            throw new Error("Could not create a session for this day.");
+          if (!created?.id) throw new Error("Could not create a session for this day.");
           this.restoreSessionData({ ...created, date, tasks: [] }, date);
         }
       } else {
@@ -877,16 +835,11 @@ class GridTaskTracker {
 
   updateActivitySummary() {
     const summary = TimeCalculations.activitySummary(this.gridData);
-    this.startTime =
-      summary.firstActivity === "--" ? "" : summary.firstActivity;
-    document.getElementById("firstActivityDisplay").textContent =
-      summary.firstActivity;
-    document.getElementById("lastActivityDisplay").textContent =
-      summary.lastActivity;
-    document.getElementById("sessionSpanDisplay").textContent =
-      summary.sessionSpan;
-    document.getElementById("trackedTimeDisplay").textContent =
-      summary.trackedTime;
+    this.startTime = summary.firstActivity === "--" ? "" : summary.firstActivity;
+    document.getElementById("firstActivityDisplay").textContent = summary.firstActivity;
+    document.getElementById("lastActivityDisplay").textContent = summary.lastActivity;
+    document.getElementById("sessionSpanDisplay").textContent = summary.sessionSpan;
+    document.getElementById("trackedTimeDisplay").textContent = summary.trackedTime;
   }
 
   initializeGridHeader() {
@@ -927,10 +880,7 @@ class GridTaskTracker {
   }
 
   updateAutoCenterStatus(now = Date.now()) {
-    const seconds = TimeCalculations.autoCenterSeconds(
-      this.autoCenterPausedUntil,
-      now,
-    );
+    const seconds = TimeCalculations.autoCenterSeconds(this.autoCenterPausedUntil, now);
     document.getElementById("autoCenterStatus").hidden = seconds === 0;
     document.getElementById("autoCenterCountdown").textContent =
       `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -954,11 +904,7 @@ class GridTaskTracker {
     const body = table.tBodies[0];
     const columns = table.querySelectorAll(".interval-number");
     const startHour = 0;
-    const position = TimeCalculations.gridPosition(
-      now,
-      startHour,
-      columns.length,
-    );
+    const position = TimeCalculations.gridPosition(now, startHour, columns.length);
 
     line.hidden = !body.rows.length || !position;
     if (!position) return;
@@ -1009,9 +955,7 @@ class GridTaskTracker {
       nameButton.textContent = taskName;
       nameButton.title = `Rename task across all days: ${taskName}`;
       nameButton.setAttribute("aria-label", `Rename task: ${taskName}`);
-      nameButton.addEventListener("click", () =>
-        this.editTaskName(taskIdx, nameButton),
-      );
+      nameButton.addEventListener("click", () => this.editTaskName(taskIdx, nameButton));
       taskCell.appendChild(nameButton);
 
       // Remove button
@@ -1031,7 +975,6 @@ class GridTaskTracker {
         intervalIdx < TimeCalculations.intervalCount;
         intervalIdx++
       ) {
-
         const cell = document.createElement("td");
         cell.dataset.taskIdx = taskIdx;
         cell.dataset.intervalIdx = intervalIdx;
@@ -1134,10 +1077,7 @@ class GridTaskTracker {
       )
         return;
       this.saveToLocalStorage();
-      localStorage.setItem(
-        "ettGridBeforeRefresh",
-        localStorage.getItem("ettGridState"),
-      );
+      localStorage.setItem("ettGridBeforeRefresh", localStorage.getItem("ettGridState"));
       await this.loadSessionFromSupabase(session);
       this.lastSyncTime = new Date().toISOString();
     } catch (error) {
@@ -1186,8 +1126,7 @@ class GridTaskTracker {
       });
 
       const session = await this.db.getSession(this.sessionId);
-      if (!session)
-        throw new Error("The Supabase session could not be loaded.");
+      if (!session) throw new Error("The Supabase session could not be loaded.");
 
       const remoteTasks = session.tasks || [];
       const usedTaskIds = new Set();
@@ -1206,9 +1145,7 @@ class GridTaskTracker {
           if (!taskId) throw new Error(`Could not sync task "${taskName}".`);
           this.replaceCachedTaskId(knownId, taskId, taskName);
           this.taskIds[taskIndex] = taskId;
-        } else if (
-          !remoteTasks.some((task) => String(task.id) === String(taskId))
-        ) {
+        } else if (!remoteTasks.some((task) => String(task.id) === String(taskId))) {
           await this.db.attachTask(this.sessionId, taskId);
         }
 
@@ -1223,9 +1160,7 @@ class GridTaskTracker {
       }
       this.taskIdMap = nextTaskIdMap;
 
-      const existingIntervals = await this.db.getSessionIntervals(
-        this.sessionId,
-      );
+      const existingIntervals = await this.db.getSessionIntervals(this.sessionId);
       const desiredIntervals = new Map();
       this.tasks.forEach((taskName, taskIndex) => {
         const taskId = this.getTaskId(taskIndex);
@@ -1333,9 +1268,7 @@ class GridTaskTracker {
 
   taskAllDayIntervals(
     taskIndex,
-    snapshots = Object.values(
-      JSON.parse(localStorage.getItem("ettGridHistory") || "{}"),
-    ),
+    snapshots = Object.values(JSON.parse(localStorage.getItem("ettGridHistory") || "{}")),
   ) {
     return TimeCalculations.taskIntervalTotal(
       this.getTaskId(taskIndex),
@@ -1357,10 +1290,7 @@ class GridTaskTracker {
       intervals: (this.gridData[index] || []).filter(Boolean).length,
       taskId: this.getTaskId(index),
     }));
-    const totalIntervals = rows.reduce(
-      (total, row) => total + row.intervals,
-      0,
-    );
+    const totalIntervals = rows.reduce((total, row) => total + row.intervals, 0);
     const table = document.createElement("table");
     table.className = "summary-table";
     table.setAttribute("aria-label", "Task summary");
@@ -1391,9 +1321,7 @@ class GridTaskTracker {
     const duration = (intervals) => {
       const minutes = intervals * 15;
       const time =
-        minutes >= 60
-          ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
-          : `${minutes}m`;
+        minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`;
       return time;
     };
     const totalRow = appendRow(
@@ -1414,11 +1342,7 @@ class GridTaskTracker {
       columnHeadings: true,
     });
     rows.forEach((row) =>
-      appendRow(body, [
-        row.name,
-        duration(row.intervals),
-        duration(row.allIntervals),
-      ]),
+      appendRow(body, [row.name, duration(row.intervals), duration(row.allIntervals)]),
     );
     if (!rows.length) {
       const empty = body.insertRow().insertCell();
@@ -1482,21 +1406,16 @@ class GridTaskTracker {
   initializeReminder(now = Date.now()) {
     let settings = {};
     try {
-      settings =
-        JSON.parse(localStorage.getItem("ettReminderSettings") || "{}") || {};
+      settings = JSON.parse(localStorage.getItem("ettReminderSettings") || "{}") || {};
     } catch (error) {
       console.warn("Could not load reminder settings:", error);
     }
     const minutes = Number(settings.minutes);
     this.timerState.totalTime =
-      Number.isInteger(minutes) && minutes >= 1 && minutes <= 120
-        ? minutes * 60
-        : 900;
+      Number.isInteger(minutes) && minutes >= 1 && minutes <= 120 ? minutes * 60 : 900;
     this.bellEnabled = settings.bellEnabled !== false;
     this.bellVolume =
-      Number.isFinite(settings.volume) &&
-      settings.volume >= 0 &&
-      settings.volume <= 1
+      Number.isFinite(settings.volume) && settings.volume >= 0 && settings.volume <= 1
         ? settings.volume
         : 1;
     this.nextReminderAt =
@@ -1583,8 +1502,7 @@ class GridTaskTracker {
         this.bellOutput.connect(this.audioContext.destination);
         this.audioContext.onstatechange = () => this.updateBellControl();
       }
-      if (this.audioContext.state !== "running")
-        await this.audioContext.resume();
+      if (this.audioContext.state !== "running") await this.audioContext.resume();
     } catch (error) {
       console.warn("Bell audio is unavailable:", error);
     }
@@ -1748,12 +1666,8 @@ class GridTaskTracker {
    * Load state from localStorage
    */
   loadFromLocalStorage(saved = localStorage.getItem("ettGridState")) {
-    this.taskCatalog = JSON.parse(
-      localStorage.getItem("ettTaskCatalog") || "[]",
-    );
-    this.taskDayTotals = JSON.parse(
-      localStorage.getItem("ettTaskDayTotals") || "[]",
-    );
+    this.taskCatalog = JSON.parse(localStorage.getItem("ettTaskCatalog") || "[]");
+    this.taskDayTotals = JSON.parse(localStorage.getItem("ettTaskDayTotals") || "[]");
     if (saved) {
       try {
         const state = JSON.parse(saved);
@@ -1783,9 +1697,7 @@ class GridTaskTracker {
         // Initialize grid data for tasks if not present
         if (this.gridData.length < this.tasks.length) {
           for (let i = this.gridData.length; i < this.tasks.length; i++) {
-            this.gridData.push(
-              new Array(TimeCalculations.intervalCount).fill(false),
-            );
+            this.gridData.push(new Array(TimeCalculations.intervalCount).fill(false));
           }
         }
       } catch (e) {

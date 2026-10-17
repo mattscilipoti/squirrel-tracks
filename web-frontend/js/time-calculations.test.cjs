@@ -10,13 +10,8 @@ test("all-days totals add other sessions to live day counts without counting the
   ];
   assert.equal(TimeCalculations.taskIntervalTotal(5, "2", 3, totals), 7);
   assert.equal(TimeCalculations.taskIntervalTotal(6, "2", 1, totals), 51);
-  const snapshots = [
-    { sessionId: 1, taskIds: [5], gridData: [new Array(6).fill(true)] },
-  ];
-  assert.equal(
-    TimeCalculations.taskIntervalTotal(5, "2", 3, totals, snapshots),
-    9,
-  );
+  const snapshots = [{ sessionId: 1, taskIds: [5], gridData: [new Array(6).fill(true)] }];
+  assert.equal(TimeCalculations.taskIntervalTotal(5, "2", 3, totals, snapshots), 9);
   assert.equal(
     TimeCalculations.taskIntervalTotal(5, "2", 3, totals, [
       { sessionId: 1, tasks: [], gridData: [] },
@@ -128,16 +123,13 @@ test("single final bubble ends at 24:00 and removing it clears summaries", () =>
 });
 
 test("a filled day spans and tracks 24 hours", () => {
-  assert.deepEqual(
-    TimeCalculations.activitySummary([new Array(96).fill(true)]),
-    {
-      firstActivity: "00:00",
-      lastActivity: "24:00",
-      sessionSpan: "24h 0m",
-      trackedTime: "24h 0m",
-      trackedMinutes: 1440,
-    },
-  );
+  assert.deepEqual(TimeCalculations.activitySummary([new Array(96).fill(true)]), {
+    firstActivity: "00:00",
+    lastActivity: "24:00",
+    sessionSpan: "24h 0m",
+    trackedTime: "24h 0m",
+    trackedMinutes: 1440,
+  });
 });
 
 test("current slot follows local clock quarter-hours independently of activity", () => {
@@ -148,10 +140,7 @@ test("current slot follows local clock quarter-hours independently of activity",
     [13, 0, 53],
     [23, 59, 96],
   ]) {
-    assert.equal(
-      TimeCalculations.currentSlot(new Date(2026, 9, 15, hour, minute)),
-      slot,
-    );
+    assert.equal(TimeCalculations.currentSlot(new Date(2026, 9, 15, hour, minute)), slot);
   }
 });
 
@@ -243,11 +232,7 @@ for (const timezone of ["America/New_York", "UTC", "Asia/Kolkata"]) {
           [23, 59, 59, 14 / 15],
         ]) {
           assert.deepEqual(
-            TimeCalculations.gridPosition(
-              new Date(2026, 9, 15, hour, minute),
-              9,
-              60,
-            ),
+            TimeCalculations.gridPosition(new Date(2026, 9, 15, hour, minute), 9, 60),
             { intervalIndex, fraction },
           );
         }
@@ -260,11 +245,7 @@ for (const timezone of ["America/New_York", "UTC", "Asia/Kolkata"]) {
           [0, 0],
         ]) {
           assert.equal(
-            TimeCalculations.gridPosition(
-              new Date(2026, 9, 15, hour, minute),
-              9,
-              60,
-            ),
+            TimeCalculations.gridPosition(new Date(2026, 9, 15, hour, minute), 9, 60),
             null,
           );
         }
@@ -272,10 +253,7 @@ for (const timezone of ["America/New_York", "UTC", "Asia/Kolkata"]) {
           TimeCalculations.gridPosition(new Date(2026, 9, 15, 13), 9, 16),
           null,
         );
-        assert.equal(
-          TimeCalculations.gridPosition(new Date(2026, 9, 15, 9), 9, 0),
-          null,
-        );
+        assert.equal(TimeCalculations.gridPosition(new Date(2026, 9, 15, 9), 9, 0), null);
       }));
   });
 }

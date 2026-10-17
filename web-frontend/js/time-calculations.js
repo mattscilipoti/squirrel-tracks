@@ -1,13 +1,7 @@
 const TimeCalculations = {
   intervalCount: 96,
 
-  taskIntervalTotal(
-    taskId,
-    selectedDay,
-    currentIntervals,
-    dayTotals,
-    snapshots = [],
-  ) {
+  taskIntervalTotal(taskId, selectedDay, currentIntervals, dayTotals, snapshots = []) {
     const counts = new Map();
     for (const row of dayTotals) {
       if (String(row.task_id) === String(taskId))
@@ -18,8 +12,7 @@ const TimeCalculations = {
       const day = String(state.sessionId ?? `local:${state.date}`);
       if (day === selectedDay) continue;
       const ids =
-        state.taskIds ||
-        (state.tasks || []).map((name) => state.taskIdMap?.[name]);
+        state.taskIds || (state.tasks || []).map((name) => state.taskIdMap?.[name]);
       const count = ids.reduce(
         (total, id, index) =>
           total +
@@ -40,8 +33,7 @@ const TimeCalculations = {
       now < nextReminderAt
         ? 0
         : Math.floor((now - nextReminderAt) / intervalMilliseconds) + 1;
-    const nextDeadline =
-      nextReminderAt + elapsedIntervals * intervalMilliseconds;
+    const nextDeadline = nextReminderAt + elapsedIntervals * intervalMilliseconds;
     return {
       nextReminderAt: nextDeadline,
       timeRemaining: Math.ceil((nextDeadline - now) / 1000),
@@ -62,8 +54,7 @@ const TimeCalculations = {
     const normalized = new Array(96).fill(false);
     const offset = row.length === 60 ? 36 : 0;
     row.forEach((value, index) => {
-      if (index + offset < normalized.length)
-        normalized[index + offset] = value;
+      if (index + offset < normalized.length) normalized[index + offset] = value;
     });
     return normalized;
   },
@@ -94,12 +85,10 @@ const TimeCalculations = {
     const lastMinute = (filledSlots[filledSlots.length - 1] + 1) * 15;
     const clockTime = (minutes) =>
       `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-    const duration = (minutes) =>
-      `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+    const duration = (minutes) => `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
     const trackedMinutes =
       gridData.reduce(
-        (count, row) =>
-          count + row.slice(0, this.intervalCount).filter(Boolean).length,
+        (count, row) => count + row.slice(0, this.intervalCount).filter(Boolean).length,
         0,
       ) * 15;
     return {
@@ -116,8 +105,7 @@ const TimeCalculations = {
   },
 
   gridPosition(now, startHour, columnCount) {
-    const elapsedMinutes =
-      now.getHours() * 60 + now.getMinutes() - startHour * 60;
+    const elapsedMinutes = now.getHours() * 60 + now.getMinutes() - startHour * 60;
     const intervalIndex = Math.floor(elapsedMinutes / 15);
     if (intervalIndex < 0 || intervalIndex >= columnCount) return null;
 
