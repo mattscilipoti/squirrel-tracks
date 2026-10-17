@@ -74,11 +74,11 @@
     "editor.wordWrap": "on"
   },
   "chat.tools.terminal.autoApprove": {
-    "/^cd /workspaces/ett/backend && bundle exec rails db:migrate$/": {
+    "/^cd /workspaces/squirrel_tracks/backend && bundle exec rails db:migrate$/": {
       "approve": true,
       "matchCommandLine": true
     },
-    "/^cd /workspaces/ett/backend && bundle list \\| grep shoulda$/": {
+    "/^cd /workspaces/squirrel_tracks/backend && bundle list \\| grep shoulda$/": {
       "approve": true,
       "matchCommandLine": true
     }
