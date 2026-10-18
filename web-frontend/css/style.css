@@ -177,23 +177,6 @@ header {
   margin-bottom: 12px;
 }
 
-.btn-sign-out {
-  padding: 4px 10px;
-  border: 1px solid #ccc;
-  border-radius: 3px;
-  background: #f5f5f5;
-  color: #555;
-  font-size: 0.75rem;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.btn-sign-out:hover {
-  background: #e0e0e0;
-  color: #333;
-}
-
 .brand-lockup {
   display: flex;
   flex-wrap: wrap;
@@ -508,7 +491,8 @@ header a:hover {
 
 .advanced-controls,
 .data-change-actions,
-.export-actions {
+.export-actions,
+.account-actions:not([hidden]) {
   display: flex;
   align-items: center;
   gap: 10px;

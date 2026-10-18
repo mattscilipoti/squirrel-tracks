@@ -100,15 +100,6 @@
               <span class="trail-print print-three">🐾</span>
             </div>
           </div>
-          <button
-            id="signOutBtn"
-            class="btn-sign-out"
-            type="button"
-            title="Sign out of your account"
-            hidden
-          >
-            Sign out
-          </button>
           <p class="subtitle">
             See where your day goes and discover your patterns of focus. Add tasks and
             fill a bubble for each 15 minutes spent on them. The built-in reminder timer
@@ -226,7 +217,7 @@
           </button>
           <details class="advanced-actions">
             <summary
-              title="Show cloud synchronization, grid clearing, and export actions"
+              title="Show cloud synchronization, grid clearing, export, and sign-out actions"
             >
               Advanced
             </summary>
@@ -266,6 +257,17 @@
                   title="Download this session's task totals and activity summaries as a CSV file."
                 >
                   Export CSV
+                </button>
+              </div>
+              <div id="accountActions" class="account-actions" hidden>
+                <span class="action-separator" aria-hidden="true">|</span>
+                <button
+                  id="signOutBtn"
+                  class="btn btn-secondary"
+                  type="button"
+                  title="Sign out of your account"
+                >
+                  Sign out
                 </button>
               </div>
             </div>
@@ -408,6 +410,7 @@
         const loginTitle = document.getElementById("loginModalTitle");
         const loginSubtitle = document.getElementById("loginModalSubtitle");
         const signOutBtn = document.getElementById("signOutBtn");
+        const accountActions = document.getElementById("accountActions");
 
         let isSignUp = false;
 
@@ -439,7 +442,7 @@
         /** Called after successful auth to boot the app. */
         function bootApp(session) {
           initSupabaseClient(SUPABASE_URL, SUPABASE_API_KEY, session.access_token);
-          signOutBtn.hidden = false;
+          accountActions.hidden = false;
           if (window.tracker) {
             window.tracker.setupSupabase();
           }
@@ -507,7 +510,7 @@
         signOutBtn.addEventListener("click", async () => {
           const auth = getSupabaseAuth();
           if (auth) await auth.signOut();
-          signOutBtn.hidden = true;
+          accountActions.hidden = true;
           supabaseClient = null;
           showLogin();
         });
