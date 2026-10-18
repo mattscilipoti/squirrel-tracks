@@ -27,6 +27,17 @@ function fixture(date = "2026-10-14", options = {}) {
       },
     ],
     ["dateWarning", {}],
+    ["syncStatus", { dataset: {} }],
+    ["syncStatusIcon", {}],
+    ["syncStatusText", {}],
+    [
+      "lastCloudSync",
+      {
+        removeAttribute(name) {
+          delete this[name === "datetime" ? "dateTime" : name];
+        },
+      },
+    ],
     ["todayBtn", {}],
     ["memoInput", { value: "Yesterday's memo" }],
     ["notesInput", { value: "Yesterday's notes" }],
@@ -51,7 +62,10 @@ function fixture(date = "2026-10-14", options = {}) {
     console,
     clearInterval,
     Date: FixedDate,
-    window: { setTimeout() {} },
+    window: {
+      setTimeout() {},
+      chooseSyncConflict: options.chooseSyncConflict || (async () => "cancel"),
+    },
     hasSupabaseConfig: () => options.configured !== false,
     confirm: options.confirm || (() => true),
     alert: (message) => alerts.push(message),
@@ -71,6 +85,8 @@ function fixture(date = "2026-10-14", options = {}) {
   const tracker = vm.runInContext("Object.create(GridTaskTracker.prototype)", context);
   Object.assign(tracker, {
     date,
+    cloudAuthenticated: options.authenticated !== false,
+    cloudReachable: options.reachable ?? null,
     sessionId: "yesterday",
     tasks: ["Task"],
     taskIdMap: { Task: "task-id" },
@@ -86,8 +102,60 @@ function fixture(date = "2026-10-14", options = {}) {
     isFullSyncing: false,
     isInitializingSession: false,
   });
-  return { tracker, storage, elements, container, alerts };
+  return { context, tracker, storage, elements, container, alerts };
 }
+
+test("sync status warns for local-only mode and persists the latest successful sync time", () => {
+  const { tracker, storage, elements } = fixture("2026-10-15", {
+    configured: false,
+  });
+
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "local-only");
+  assert.equal(elements.syncStatusIcon.textContent, "⚠");
+  assert.match(elements.syncStatusText.textContent, /Local only/);
+  assert.equal(elements.lastCloudSync.textContent, "Never");
+
+  const syncedAt = new Date("2026-10-18T12:34:56.000Z");
+  tracker.recordSyncSuccess(syncedAt);
+  assert.equal(storage.get("ettLastSyncTime"), syncedAt.toISOString());
+  assert.equal(elements.lastCloudSync.dateTime, syncedAt.toISOString());
+  assert.equal(elements.syncStatus.dataset.state, "local-only");
+});
+
+test("sync status distinguishes offline from configured signed-out mode", () => {
+  const { context, tracker, elements } = fixture("2026-10-15", {
+    authenticated: false,
+  });
+  context.navigator = { onLine: false };
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "offline");
+  assert.equal(elements.syncStatusIcon.textContent, "⚠");
+
+  context.navigator.onLine = true;
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "sign-in");
+  assert.match(elements.syncStatusText.textContent, /sign in/i);
+
+  tracker.cloudAuthenticated = true;
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "checking");
+
+  context.navigator.onLine = true;
+  tracker.setCloudReachability(false);
+  assert.equal(elements.syncStatus.dataset.state, "offline");
+
+  tracker.setCloudReachability(true);
+  assert.equal(elements.syncStatus.dataset.state, "connected");
+  assert.equal(elements.syncStatusIcon.textContent, "✓");
+  assert.equal(elements.syncStatusText.textContent, "Connected for syncing");
+  assert.doesNotMatch(elements.syncStatusText.textContent, /supabase/i);
+
+  tracker.recordSyncSuccess(new Date("2026-10-18T12:34:56.000Z"));
+  assert.equal(elements.syncStatus.dataset.state, "synced");
+  assert.equal(elements.syncStatusIcon.textContent, "✓");
+  assert.equal(elements.syncStatusText.textContent, "Connected for syncing");
+});
 
 test("reusing a task attaches the same ID and starts with empty bubbles for the new day", async () => {
   const { tracker } = fixture("2026-10-15");
@@ -182,6 +250,28 @@ test("full sync attaches equal-named tasks by distinct IDs rather than matching 
   await tracker.syncAndReloadFromSupabase();
   assert.deepEqual(attachments, [10, 11]);
   assert.equal(container.inert, false);
+});
+
+test("full sync attaches a local task to an existing reusable cloud task", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.tasks = ["Reusable"];
+  tracker.taskIds = ["local:offline-task"];
+  tracker.gridData = [new Array(96).fill(false)];
+  tracker.taskCatalog = [{ id: 42, name: "Reusable" }];
+  const attached = [];
+  tracker.db = {
+    updateSession: async () => {},
+    getSession: async () => ({ id: "yesterday", tasks: [] }),
+    attachTask: async (sessionId, taskId) => attached.push({ sessionId, taskId }),
+    createTask: async () => assert.fail("Created a duplicate reusable task"),
+    getSessionIntervals: async () => [],
+  };
+  tracker.loadSessionFromSupabase = async () => {};
+
+  await tracker.syncAndReloadFromSupabase();
+
+  assert.deepEqual(attached, [{ sessionId: "yesterday", taskId: 42 }]);
+  assert.equal(tracker.taskIds[0], 42);
 });
 
 test("non-today dates show an explicit warning and highlight; today clears them", () => {
@@ -304,6 +394,186 @@ test("local-only date navigation keeps per-day state without a cloud connection"
   assert.equal(elements.dateWarning.hidden, false);
   assert.equal(await tracker.changeSessionDate("2026-10-15"), true);
   assert.equal(tracker.tasks[0], "Task");
+});
+
+test("missing config keeps edits local even when a cached cloud session ID exists", async () => {
+  const { tracker } = fixture("2026-10-15", {
+    configured: false,
+    authenticated: false,
+  });
+  const calls = [];
+  tracker.db = {
+    isAuthenticated: () => false,
+    updateSession: async () => calls.push("updateSession"),
+    createTask: async () => calls.push("createTask"),
+    createInterval: async () => calls.push("createInterval"),
+  };
+  for (const method of ["renderGrid", "updateTaskCount", "updateSummary"])
+    tracker[method] = () => {};
+  tracker.saveToLocalStorage = () => {};
+
+  tracker.addTask("Local task");
+  await tracker.syncToSupabase();
+  await tracker.syncIntervalToSupabase(0, 0, true);
+  await tracker.initializeSession();
+
+  assert.deepEqual(tracker.tasks, ["Task", "Local task"]);
+  assert.equal(tracker.sessionId, "yesterday");
+  assert.deepEqual(calls, []);
+});
+
+test("authenticated setup uploads local data marked during session initialization", async () => {
+  const { context, tracker } = fixture();
+  const calls = [];
+  const db = {
+    isAuthenticated: () => true,
+    setAccessToken: (token) => calls.push(`token:${token}`),
+  };
+  context.getSupabaseClient = () => db;
+  tracker.initializeSession = async () => {
+    calls.push("initialize");
+    tracker.pendingInitialSyncAction = "upload";
+  };
+  tracker.syncAndReloadFromSupabase = async () => calls.push("upload");
+
+  assert.equal(await tracker.setupSupabase("user-token"), true);
+  assert.deepEqual(calls, ["token:user-token", "initialize", "upload"]);
+  assert.equal(tracker.pendingInitialSyncAction, null);
+});
+
+test("a local-only day is marked for upload when authenticated cloud setup creates its session", async () => {
+  const { tracker } = fixture();
+  tracker.db = {
+    getSessionsForDate: async () => [],
+    createSession: async () => ({ id: 15 }),
+  };
+  tracker.saveToLocalStorage = () => {};
+
+  await tracker.initializeSession();
+
+  assert.equal(tracker.sessionId, 15);
+  assert.equal(tracker.pendingInitialSyncAction, "upload");
+});
+
+test("merging local and cloud sessions unions tasks and intervals and prompts for differing text", async () => {
+  const prompts = [];
+  const { tracker } = fixture("2026-10-15", {
+    chooseSyncConflict: async () => "merge",
+    confirm: (message) => {
+      prompts.push(message);
+      return prompts.length === 1;
+    },
+  });
+  const cloudSession = {
+    id: 15,
+    date: "2026-10-15",
+    start_time: "",
+    memo: "Cloud memo",
+    notes: "Cloud notes",
+    tasks: [
+      { id: 50, name: "Task" },
+      { id: 60, name: "Cloud task" },
+    ],
+  };
+  tracker.db = {
+    getSessionsForDate: async () => [cloudSession],
+    getSessionIntervals: async () => [
+      { task_id: 50, interval_index: 1 },
+      { task_id: 60, interval_index: 2 },
+    ],
+  };
+  tracker.saveToLocalStorage = () => {};
+  for (const method of ["renderGrid", "updateTaskCount", "updateSummary"])
+    tracker[method] = () => {};
+
+  await tracker.initializeSession();
+
+  assert.deepEqual(Array.from(tracker.tasks), ["Task", "Cloud task"]);
+  assert.deepEqual(Array.from(tracker.taskIds), [50, 60]);
+  assert.deepEqual(Array.from(tracker.gridData[0].slice(0, 3)), [true, true, false]);
+  assert.deepEqual(Array.from(tracker.gridData[1].slice(0, 3)), [false, false, true]);
+  assert.equal(tracker.memo, "Yesterday's memo");
+  assert.equal(tracker.notes, "Cloud notes");
+  assert.equal(prompts.length, 2);
+});
+
+test("canceling a local/cloud conflict keeps local state and disconnects the day", async () => {
+  const { tracker } = fixture("2026-10-15", {
+    chooseSyncConflict: async () => "cancel",
+  });
+  const calls = [];
+  tracker.db = {
+    isAuthenticated: () => true,
+    updateSession: async () => calls.push("updateSession"),
+    getSessionsForDate: async () => [
+      {
+        id: 15,
+        date: "2026-10-15",
+        tasks: [{ id: 50, name: "Cloud task" }],
+      },
+    ],
+    getSessionIntervals: async () => [],
+  };
+  tracker.saveToLocalStorage = () => {};
+
+  await tracker.initializeSession();
+  await tracker.syncToSupabase();
+
+  assert.equal(tracker.sessionId, "yesterday");
+  assert.equal(tracker.syncPausedForConflict, true);
+  assert.deepEqual(tracker.tasks, ["Task"]);
+  assert.equal(tracker.gridData[0][0], true);
+  assert.deepEqual(calls, []);
+});
+
+test("choosing upload preserves the local snapshot and marks it for cloud upload", async () => {
+  const { tracker } = fixture("2026-10-15", {
+    chooseSyncConflict: async () => "upload",
+  });
+  tracker.db = {
+    getSessionsForDate: async () => [
+      {
+        id: 15,
+        date: "2026-10-15",
+        tasks: [{ id: 50, name: "Cloud task" }],
+      },
+    ],
+    getSessionIntervals: async () => [],
+  };
+  tracker.saveToLocalStorage = () => {};
+
+  await tracker.initializeSession();
+
+  assert.equal(tracker.sessionId, 15);
+  assert.equal(tracker.pendingInitialSyncAction, "upload");
+  assert.deepEqual(Array.from(tracker.tasks), ["Task"]);
+  assert.equal(tracker.gridData[0][0], true);
+});
+
+test("choosing cloud backs up local data before loading the remote session", async () => {
+  const { tracker, storage } = fixture("2026-10-15", {
+    chooseSyncConflict: async () => "load",
+  });
+  tracker.db = {
+    getSessionsForDate: async () => [
+      {
+        id: 15,
+        date: "2026-10-15",
+        tasks: [{ id: 50, name: "Cloud task" }],
+      },
+    ],
+    getSessionIntervals: async () => [],
+  };
+  tracker.saveToLocalStorage = () => storage.set("ettGridState", "local snapshot");
+  let loadedSessionId;
+  tracker.loadSessionFromSupabase = async (session) => {
+    loadedSessionId = session.id;
+  };
+
+  await tracker.initializeSession();
+
+  assert.equal(loadedSessionId, 15);
+  assert.equal(storage.get("ettGridBeforeCloudLoad:2026-10-15"), "local snapshot");
 });
 
 test("historical session metadata syncs under its own date without rollover", async () => {
@@ -898,7 +1168,9 @@ test("a cloud load failure does not create a replacement session", async () => {
 });
 
 test("startup recovers populated session 5 when saved session 6 is empty", async () => {
-  const { tracker } = fixture("2026-10-15");
+  const { tracker, elements } = fixture("2026-10-15");
+  elements.memoInput.value = "";
+  elements.notesInput.value = "";
   tracker.sessionId = 6;
   tracker.tasks = [];
   tracker.gridData = [];
@@ -912,6 +1184,7 @@ test("startup recovers populated session 5 when saved session 6 is empty", async
   tracker.db = {
     getSession: async () => empty,
     getSessionsForDate: async () => [{ ...empty, id: 7 }, empty, populated],
+    getSessionIntervals: async () => [],
     createSession: async () => assert.fail("Created another empty session"),
   };
   let restored;
@@ -923,12 +1196,15 @@ test("startup recovers populated session 5 when saved session 6 is empty", async
 });
 
 test("startup looks up today's existing sessions before creating one without a saved ID", async () => {
-  const { tracker } = fixture("2026-10-15");
+  const { tracker, elements } = fixture("2026-10-15");
+  elements.memoInput.value = "";
+  elements.notesInput.value = "";
   tracker.sessionId = null;
   tracker.tasks = [];
   tracker.gridData = [];
   tracker.db = {
     getSessionsForDate: async () => [{ id: 5, date: "2026-10-15", tasks: [{ id: 50 }] }],
+    getSessionIntervals: async () => [],
     createSession: async () => assert.fail("Created a duplicate session"),
   };
   let restored;
@@ -940,7 +1216,9 @@ test("startup looks up today's existing sessions before creating one without a s
 });
 
 test("startup restores all six tasks and 26 bubbles and persists the recovered pointer", async () => {
-  const { tracker, storage } = fixture("2026-10-15");
+  const { tracker, storage, elements } = fixture("2026-10-15");
+  elements.memoInput.value = "";
+  elements.notesInput.value = "";
   tracker.sessionId = 6;
   tracker.tasks = [];
   tracker.gridData = [];
@@ -990,8 +1268,15 @@ test("cloud initialization reuses a session from the same day", async () => {
   let restored = false;
   tracker.db = {
     getSessionsForDate: async () => [
-      { id: "existing", date: "2026-10-15", tasks: [{ id: 50 }] },
+      {
+        id: "existing",
+        date: "2026-10-15",
+        tasks: [{ id: 50, name: "Task" }],
+        memo: "Yesterday's memo",
+        notes: "Yesterday's notes",
+      },
     ],
+    getSessionIntervals: async () => [{ task_id: 50, interval_index: 0 }],
     createSession: async () => assert.fail("Created an unnecessary session"),
   };
   tracker.loadSessionFromSupabase = async () => {
@@ -1004,11 +1289,14 @@ test("cloud initialization reuses a session from the same day", async () => {
 
 test("startup does not replace local tasks with a different or empty cloud session", async () => {
   for (const session of [
-    { id: "different", date: "2026-10-15", tasks: [{ id: 50 }] },
+    { id: "different", date: "2026-10-15", tasks: [{ id: 50, name: "Cloud task" }] },
     { id: "yesterday", date: "2026-10-15", tasks: [] },
   ]) {
     const { tracker } = fixture("2026-10-15");
-    tracker.db = { getSessionsForDate: async () => [session] };
+    tracker.db = {
+      getSessionsForDate: async () => [session],
+      getSessionIntervals: async () => [],
+    };
     tracker.loadSessionFromSupabase = async () =>
       assert.fail("Replaced local tasks without confirmation");
     await tracker.initializeSession();

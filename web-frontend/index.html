@@ -7,45 +7,6 @@
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <!-- Supabase Setup Modal -->
-    <div id="supabaseSetupModal" class="modal">
-      <div class="modal-content">
-        <h2>Configure Supabase</h2>
-        <p>Enter your Supabase project credentials to enable cloud sync.</p>
-        <p id="supabaseSetupError" class="setup-error" role="alert" hidden></p>
-        <form id="supabaseSetupForm">
-          <label>
-            Project URL:
-            <input
-              type="url"
-              id="supabaseUrlInput"
-              placeholder="https://your-project.supabase.co"
-              required
-            />
-          </label>
-          <label>
-            API Key (anon):
-            <input
-              type="password"
-              id="supabaseKeyInput"
-              placeholder="your_anon_key"
-              required
-            />
-          </label>
-          <div class="modal-buttons">
-            <button type="submit" class="btn btn-primary">Connect to Supabase</button>
-            <button type="button" id="skipSupabaseBtn" class="btn btn-secondary">
-              Use Local Only
-            </button>
-          </div>
-        </form>
-        <p class="help-text">
-          Don't have Supabase?
-          <a href="https://supabase.com" target="_blank">Create free project</a>
-        </p>
-      </div>
-    </div>
-
     <!-- Login Modal -->
     <div id="loginModal" class="modal hidden">
       <div class="modal-content">
@@ -79,11 +40,44 @@
             <button type="submit" id="loginSubmitBtn" class="btn btn-primary">
               Sign In
             </button>
+            <button type="button" id="continueOfflineBtn" class="btn btn-secondary">
+              Continue offline
+            </button>
           </div>
         </form>
         <p class="help-text">
           <a href="#" id="loginToggleLink">Need an account? Sign up</a>
         </p>
+      </div>
+    </div>
+
+    <div id="syncConflictModal" class="modal hidden">
+      <div
+        class="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="syncConflictTitle"
+      >
+        <h2 id="syncConflictTitle">Local and cloud data differ</h2>
+        <p>
+          Upload local replaces this day's cloud data. Load cloud saves a local backup
+          first. Merge combines tasks and filled intervals; differing memo and notes are
+          asked separately. Cancel leaves both copies unchanged and pauses sync.
+        </p>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-primary" data-sync-choice="upload">
+            Upload local
+          </button>
+          <button type="button" class="btn btn-secondary" data-sync-choice="load">
+            Load cloud
+          </button>
+          <button type="button" class="btn btn-secondary" data-sync-choice="merge">
+            Merge
+          </button>
+          <button type="button" class="btn btn-tertiary" data-sync-choice="cancel">
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
 
@@ -262,9 +256,19 @@
               <div id="accountActions" class="account-actions" hidden>
                 <span class="action-separator" aria-hidden="true">|</span>
                 <button
+                  id="signInBtn"
+                  class="btn btn-secondary"
+                  type="button"
+                  hidden
+                  title="Sign in to sync this browser with Supabase"
+                >
+                  Sign in to sync
+                </button>
+                <button
                   id="signOutBtn"
                   class="btn btn-secondary"
                   type="button"
+                  hidden
                   title="Sign out of your account"
                 >
                   Sign out
@@ -377,27 +381,31 @@
       </main>
 
       <footer>
-        <p>
-          THE PRINTABLE CEO™ ETT02 | COPYRIGHT © 2006 DAVID SEAH • BETTER LIVING THROUGH
-          NEW MEDIA • WWW.DAVIDSEAH.COM
+        <div
+          id="syncStatus"
+          class="sync-status"
+          data-state="local-only"
+          role="status"
+          aria-live="polite"
+        >
+          <span id="syncStatusIcon" class="sync-status-icon" aria-hidden="true">⚠</span>
+          <span id="syncStatusText">Local only: data stays on this browser</span>
+        </div>
+        <p class="sync-last-sync">Last sync: <time id="lastCloudSync">Never</time></p>
+        <p class="footer-credit">
+          Made with <span role="img" aria-label="love">♥</span> by Great Enough Works LLC
+          · 2026
         </p>
       </footer>
     </div>
 
+    <script src="js/config.js"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/time-calculations.js"></script>
     <script src="js/app-grid.js"></script>
     <script>
-      // ── Supabase setup + auth flow ──────────────────────────────────
+      // ── Optional Supabase auth flow ────────────────────────────────
       document.addEventListener("DOMContentLoaded", () => {
-        // ── Setup modal elements ────────────────────────────────────
-        const setupModal = document.getElementById("supabaseSetupModal");
-        const setupForm = document.getElementById("supabaseSetupForm");
-        const urlInput = document.getElementById("supabaseUrlInput");
-        const keyInput = document.getElementById("supabaseKeyInput");
-        const skipBtn = document.getElementById("skipSupabaseBtn");
-        const setupError = document.getElementById("supabaseSetupError");
-
         // ── Login modal elements ────────────────────────────────────
         const loginModal = document.getElementById("loginModal");
         const loginForm = document.getElementById("loginForm");
@@ -409,8 +417,12 @@
         const loginToggle = document.getElementById("loginToggleLink");
         const loginTitle = document.getElementById("loginModalTitle");
         const loginSubtitle = document.getElementById("loginModalSubtitle");
+        const continueOfflineBtn = document.getElementById("continueOfflineBtn");
+        const signInBtn = document.getElementById("signInBtn");
         const signOutBtn = document.getElementById("signOutBtn");
         const accountActions = document.getElementById("accountActions");
+        const syncConflictModal = document.getElementById("syncConflictModal");
+        let resolveSyncConflict;
 
         let isSignUp = false;
 
@@ -426,27 +438,36 @@
           loginModal.classList.add("hidden");
         }
 
-        function showSetup(message) {
-          if (message) {
-            setupError.textContent = message;
-            setupError.hidden = false;
-          }
-          urlInput.value = localStorage.getItem("supabase_url") || "";
-          keyInput.value = localStorage.getItem("supabase_key") || "";
-          setupModal.classList.remove("hidden");
-        }
-
-        // Expose for supabase-client error recovery.
-        window.showSupabaseSetupModal = showSetup;
-
-        /** Called after successful auth to boot the app. */
-        function bootApp(session) {
-          initSupabaseClient(SUPABASE_URL, SUPABASE_API_KEY, session.access_token);
+        /** Called after successful auth to boot cloud sync. */
+        async function bootApp(session) {
+          initSupabaseClient(
+            SUPABASE_URL,
+            SUPABASE_PUBLISHABLE_KEY,
+            session.access_token,
+          );
           accountActions.hidden = false;
+          signInBtn.hidden = true;
+          signOutBtn.hidden = false;
           if (window.tracker) {
-            window.tracker.setupSupabase();
+            await window.tracker.setupSupabase(session.access_token);
           }
         }
+
+        window.chooseSyncConflict = () =>
+          new Promise((resolve) => {
+            resolveSyncConflict = resolve;
+            syncConflictModal.classList.remove("hidden");
+          });
+        syncConflictModal.querySelectorAll("[data-sync-choice]").forEach((button) => {
+          button.addEventListener("click", () => {
+            syncConflictModal.classList.add("hidden");
+            resolveSyncConflict?.(button.dataset.syncChoice);
+            resolveSyncConflict = null;
+          });
+        });
+
+        signInBtn.addEventListener("click", showLogin);
+        continueOfflineBtn.addEventListener("click", hideLogin);
 
         // ── Toggle sign-in / sign-up ────────────────────────────────
         loginToggle.addEventListener("click", (e) => {
@@ -496,7 +517,7 @@
               session = await auth.signIn(email, password);
             }
             hideLogin();
-            bootApp(session);
+            await bootApp(session);
           } catch (err) {
             loginError.textContent = err.message;
             loginError.hidden = false;
@@ -510,51 +531,40 @@
         signOutBtn.addEventListener("click", async () => {
           const auth = getSupabaseAuth();
           if (auth) await auth.signOut();
-          accountActions.hidden = true;
+          window.tracker?.disableSupabase();
           supabaseClient = null;
-          showLogin();
-        });
-
-        // ── Setup form submit (Supabase URL + key) ──────────────────
-        setupForm.addEventListener("submit", (e) => {
-          e.preventDefault();
-          const url = urlInput.value.trim();
-          const key = keyInput.value.trim();
-          if (!url || !key) {
-            alert("Please enter both URL and API key");
-            return;
-          }
-          setupError.hidden = true;
-          configureSupabase(url, key);
-          supabaseAuth = null; // reset auth so it picks up new URL/key
-          setupModal.classList.add("hidden");
-          showLogin();
-        });
-
-        skipBtn.addEventListener("click", () => {
-          setupModal.classList.add("hidden");
-          console.log("Using local storage only (no cloud sync)");
+          accountActions.hidden = !hasSupabaseConfig();
+          signInBtn.hidden = false;
+          signOutBtn.hidden = true;
+          hideLogin();
         });
 
         // ── Boot sequence ───────────────────────────────────────────
         (async () => {
-          if (!hasSupabaseConfig()) {
-            // No Supabase credentials yet — show setup modal.
-            setupModal.classList.remove("hidden");
-            return;
-          }
-          setupModal.classList.add("hidden");
+          if (!hasSupabaseConfig()) return;
+          accountActions.hidden = false;
+          signInBtn.hidden = false;
 
           // Supabase is configured — try to restore auth session.
           const auth = getSupabaseAuth();
           const session = await auth.restoreSession();
           if (session) {
             hideLogin();
-            bootApp(session);
+            await bootApp(session);
           } else {
             showLogin();
           }
         })();
+
+        window.addEventListener("online", async () => {
+          window.tracker?.renderSyncStatus();
+          if (!hasSupabaseConfig()) return;
+          const session = await getSupabaseAuth()?.restoreSession();
+          if (session) await bootApp(session);
+        });
+        window.addEventListener("offline", () => {
+          window.tracker?.renderSyncStatus();
+        });
       });
     </script>
   </body>

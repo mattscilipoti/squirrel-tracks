@@ -282,6 +282,46 @@ header .subtitle {
   overflow-wrap: anywhere;
 }
 
+.sync-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: #166534;
+  font-size: 0.85rem;
+}
+
+.sync-status-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.sync-last-sync {
+  margin: 0;
+  color: #888;
+  font-size: 0.75rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.sync-status[data-state="local-only"],
+.sync-status[data-state="offline"],
+.sync-status[data-state="sign-in"],
+.sync-status[data-state="paused"] {
+  color: #c2410c;
+  font-weight: 800;
+}
+
+.sync-status[data-state="connected"],
+.sync-status[data-state="synced"] {
+  color: #15803d;
+}
+
+.sync-status[data-state="syncing"] {
+  color: #0f766e;
+}
+
 .audio-enable-button {
   min-height: 36px;
   font-size: 0.85rem;
@@ -929,7 +969,12 @@ header a:hover {
 
 /* Footer */
 footer {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  text-align: left;
   margin-top: 15px;
   padding-top: 10px;
   border-top: 1px solid #ccc;
@@ -1004,5 +1049,14 @@ footer a:hover {
   .interval-bubble {
     width: 12px;
     height: 12px;
+  }
+
+  footer {
+    justify-content: center;
+    text-align: center;
+  }
+
+  footer > * {
+    flex: 1 1 100%;
   }
 }

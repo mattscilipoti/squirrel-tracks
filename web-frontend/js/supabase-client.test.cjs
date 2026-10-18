@@ -11,7 +11,7 @@ function client() {
   });
   vm.runInContext(
     fs.readFileSync(path.join(__dirname, "supabase-client.js"), "utf8") +
-      '\nglobalThis.client = new SupabaseClient("https://example.supabase.co", "anon");',
+      '\nglobalThis.client = new SupabaseClient("https://example.supabase.co", "sb_publishable_test");',
     context,
   );
   return context.client;
@@ -69,4 +69,113 @@ test("catalog reads paginate rather than truncating reusable tasks", async () =>
   };
   assert.equal((await db.getTaskCatalog()).length, 1001);
   assert.equal(requests, 2);
+});
+
+test("publishable key is not used as an Authorization bearer token", () => {
+  const db = client();
+  assert.equal(db.headers.apikey, "sb_publishable_test");
+  assert.equal("Authorization" in db.headers, false);
+  assert.equal(db.isAuthenticated(), false);
+});
+
+test("authenticated requests use only the user access token as bearer", () => {
+  const db = client();
+  db.setAccessToken("user-access-token");
+  assert.equal(db.headers.apikey, "sb_publishable_test");
+  assert.equal(db.headers.Authorization, "Bearer user-access-token");
+  assert.equal(db.isAuthenticated(), true);
+  db.setAccessToken(null);
+  assert.equal("Authorization" in db.headers, false);
+});
+
+test("project configuration is optional and requires a publishable key", () => {
+  const source = fs.readFileSync(path.join(__dirname, "supabase-client.js"), "utf8");
+  const missingConfig = vm.createContext({ localStorage: { getItem: () => null } });
+  vm.runInContext(source, missingConfig);
+  assert.equal(vm.runInContext("hasSupabaseConfig()", missingConfig), false);
+  assert.equal(vm.runInContext("getSupabaseClient()", missingConfig), null);
+
+  const configured = vm.createContext({
+    URL,
+    localStorage: { getItem: () => null },
+  });
+  vm.runInContext("globalThis.window = globalThis", configured);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "config.js"), "utf8"), configured);
+  vm.runInContext(source, configured);
+  assert.equal(vm.runInContext("hasSupabaseConfig()", configured), true);
+  assert.equal(
+    vm.runInContext("SUPABASE_URL", configured),
+    "https://fcofqalmrtbafmmiysow.supabase.co",
+  );
+  const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  assert.ok(html.indexOf("js/config.js") < html.indexOf("js/supabase-client.js"));
+
+  const invalidKey = vm.createContext({
+    URL,
+    localStorage: { getItem: () => null },
+    SUPABASE_CONFIG: {
+      url: "https://example.supabase.co",
+      publishableKey: "service_role_secret",
+    },
+  });
+  vm.runInContext(source, invalidKey);
+  assert.equal(vm.runInContext("hasSupabaseConfig()", invalidKey), false);
+});
+
+test("auth sessions are stored under a project-specific localStorage key", () => {
+  const stored = new Map();
+  const context = vm.createContext({
+    URL,
+    localStorage: {
+      getItem: (key) => stored.get(key) || null,
+      setItem: (key, value) => stored.set(key, value),
+      removeItem: (key) => stored.delete(key),
+    },
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "supabase-client.js"), "utf8") +
+      "\nglobalThis.Auth = SupabaseAuth;",
+    context,
+  );
+  const first = new context.Auth("https://one.supabase.co", "sb_publishable_one");
+  const second = new context.Auth("https://two.supabase.co", "sb_publishable_two");
+  first._saveSession({
+    access_token: "one-token",
+    refresh_token: "one-refresh",
+    expires_in: 60,
+  });
+  second._saveSession({
+    access_token: "two-token",
+    refresh_token: "two-refresh",
+    expires_in: 60,
+  });
+  assert.equal(first.getSession().access_token, "one-token");
+  assert.equal(second.getSession().access_token, "two-token");
+  assert.equal(stored.size, 2);
+});
+
+test("a rejected cloud request reports unreachable even when browser online state is unknown", async () => {
+  const connectivity = [];
+  const context = vm.createContext({
+    URLSearchParams,
+    localStorage: { getItem: () => null },
+    window: { dispatchEvent: (event) => connectivity.push(event.detail) },
+    CustomEvent: class CustomEvent {
+      constructor(type, options) {
+        this.type = type;
+        this.detail = options.detail;
+      }
+    },
+    fetch: async () => {
+      throw new Error("network unavailable");
+    },
+  });
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "supabase-client.js"), "utf8") +
+      '\nglobalThis.db = new SupabaseClient("https://example.supabase.co", "sb_publishable_test");',
+    context,
+  );
+
+  await assert.rejects(context.db.request("GET", "/sessions"), /network unavailable/);
+  assert.deepEqual(connectivity, [false]);
 });

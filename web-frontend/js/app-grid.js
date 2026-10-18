@@ -20,12 +20,18 @@ class GridTaskTracker {
 
     // Supabase client
     this.db = getSupabaseClient();
-    this.lastSyncTime = null;
+    const storedSyncTime = localStorage.getItem("ettLastSyncTime");
+    this.lastSyncTime =
+      storedSyncTime && !Number.isNaN(Date.parse(storedSyncTime)) ? storedSyncTime : null;
     this.isSyncing = false;
     this.isFullSyncing = false;
     this.pendingWrites = new Set();
     this.sessionInitialization = null;
     this.isInitializingSession = false;
+    this.cloudAuthenticated = false;
+    this.pendingInitialSyncAction = null;
+    this.syncPausedForConflict = false;
+    this.cloudReachable = null;
     this.autoCenterPausedUntil = 0;
     this.autoCenterScrollLeft = null;
 
@@ -41,15 +47,19 @@ class GridTaskTracker {
     this.rolloverDailySession();
     this.initializeReminder();
     this.updateDateControl();
-    if (hasSupabaseConfig()) {
-      this.sessionInitialization = this.initializeSession();
-    }
     this.renderGrid();
     this.bindEvents();
     this.updateTaskCount();
     this.updateSummary();
     this.updateTimeCalculations();
+    this.renderSyncStatus();
     this.initializeSquirrelTrails();
+
+    window.addEventListener?.("app-cloud-connectivity", (event) => {
+      this.setCloudReachability(event.detail);
+    });
+    window.addEventListener?.("online", () => this.setCloudReachability(null));
+    window.addEventListener?.("offline", () => this.setCloudReachability(false));
 
     this.currentTimeObserver = new ResizeObserver(() => this.updateCurrentTimeLine());
     this.currentTimeObserver.observe(document.getElementById("timeGrid"));
@@ -81,35 +91,144 @@ class GridTaskTracker {
   /**
    * Initialize or load session from Supabase
    */
+  hasAuthenticatedCloud() {
+    const clientAuth = this.db?.isAuthenticated?.();
+    return Boolean(
+      this.cloudAuthenticated && hasSupabaseConfig() && clientAuth !== false,
+    );
+  }
+
+  isCloudReady() {
+    return this.hasAuthenticatedCloud() && !this.syncPausedForConflict;
+  }
+
+  setCloudReachability(reachable) {
+    this.cloudReachable = reachable;
+    this.renderSyncStatus();
+  }
+
+  renderSyncStatus() {
+    const status = document.getElementById("syncStatus");
+    const statusIcon = document.getElementById("syncStatusIcon");
+    const statusText = document.getElementById("syncStatusText");
+    const lastCloudSync = document.getElementById("lastCloudSync");
+    if (!status || !statusIcon || !statusText || !lastCloudSync) return;
+
+    let state;
+    let message;
+    let icon = "⚠";
+    if (!hasSupabaseConfig()) {
+      state = "local-only";
+      message = "Local only: data stays on this browser";
+    } else if (this.syncPausedForConflict) {
+      state = "paused";
+      message = "Sync paused: choose a sync action to continue";
+    } else if (globalThis.navigator?.onLine === false || this.cloudReachable === false) {
+      state = "offline";
+      message = "Offline: changes will sync when reconnected";
+    } else if (!this.hasAuthenticatedCloud()) {
+      state = "sign-in";
+      message = "Local only until you sign in";
+    } else if (
+      this.isSyncing ||
+      this.isFullSyncing ||
+      this.isInitializingSession ||
+      this.pendingWrites.size > 0
+    ) {
+      state = "syncing";
+      message = "Syncing…";
+    } else if (this.cloudReachable !== true) {
+      state = "checking";
+      message = "Checking sync connection…";
+      icon = "↻";
+    } else if (this.lastSyncTime) {
+      state = "synced";
+      message = "Connected for syncing";
+      icon = "✓";
+    } else {
+      state = "connected";
+      message = "Connected for syncing";
+      icon = "✓";
+    }
+
+    status.dataset.state = state;
+    statusIcon.textContent = state === "syncing" ? "↻" : icon;
+    statusText.textContent = message;
+    if (this.lastSyncTime) {
+      lastCloudSync.dateTime = this.lastSyncTime;
+      lastCloudSync.textContent = new Date(this.lastSyncTime).toLocaleString();
+      lastCloudSync.title = this.lastSyncTime;
+    } else {
+      lastCloudSync.removeAttribute("datetime");
+      lastCloudSync.textContent = "Never";
+      lastCloudSync.removeAttribute("title");
+    }
+  }
+
+  recordSyncSuccess(timestamp = new Date()) {
+    this.lastSyncTime = timestamp.toISOString();
+    localStorage.setItem("ettLastSyncTime", this.lastSyncTime);
+    this.renderSyncStatus();
+  }
+
   async initializeSession() {
+    if (!this.isCloudReady()) return;
     this.isInitializingSession = true;
+    this.renderSyncStatus();
     try {
       await this.loadOrCreateSession();
     } finally {
       this.isInitializingSession = false;
+      this.renderSyncStatus();
     }
   }
 
   async loadOrCreateSession() {
+    if (!this.isCloudReady()) return;
     try {
+      const localSnapshot = this.captureLocalSnapshot();
+      const hasLocalData = this.hasSessionData(localSnapshot);
       await this.refreshTaskCatalog();
       const sessions = await this.db.getSessionsForDate(this.date);
       const session = this.selectCloudSession(sessions);
       if (session) {
-        if (
-          this.tasks.length &&
-          (String(session.id) !== String(this.sessionId) || !session.tasks?.length)
-        ) {
-          console.warn(
-            "Keeping local tasks; use Refresh from DB to confirm replacing them with the saved daily session.",
-          );
+        const cloudSnapshot = await this.getCloudSnapshot(session);
+        const hasCloudData = this.hasSessionData(cloudSnapshot);
+        if (!hasLocalData) {
+          await this.loadSessionFromSupabase(session);
           return;
         }
-        await this.loadSessionFromSupabase(session);
-        console.log("Session loaded from Supabase:", session.id);
+
+        if (!hasCloudData || this.snapshotsMatch(localSnapshot, cloudSnapshot)) {
+          this.sessionId = session.id;
+          this.pendingInitialSyncAction = hasCloudData ? null : "upload";
+          if (hasCloudData) await this.loadSessionFromSupabase(session);
+          return;
+        }
+
+        const choice = await window.chooseSyncConflict?.({
+          date: this.date,
+          localTaskCount: localSnapshot.tasks.length,
+          cloudTaskCount: cloudSnapshot.tasks.length,
+        });
+        if (choice === "load") {
+          this.saveLocalBackup("ettGridBeforeCloudLoad");
+          await this.loadSessionFromSupabase(session);
+        } else if (choice === "upload") {
+          this.sessionId = session.id;
+          this.pendingInitialSyncAction = "upload";
+        } else if (choice === "merge") {
+          this.saveLocalBackup("ettGridBeforeCloudMerge");
+          this.mergeSnapshots(localSnapshot, cloudSnapshot, session.id);
+          this.pendingInitialSyncAction = "upload";
+        } else {
+          this.syncPausedForConflict = true;
+          this.renderSyncStatus();
+        }
         return;
       }
       this.sessionId = null;
+      this.pendingInitialSyncAction = hasLocalData ? "upload" : null;
     } catch (error) {
       console.warn("Failed to load session; keeping local data:", error);
       return;
@@ -131,11 +250,150 @@ class GridTaskTracker {
       this.saveToLocalStorage();
     } catch (error) {
       console.error("Failed to create session:", error);
-      const message = error?.message || "Unknown Supabase error";
-      window.showSupabaseSetupModal?.(
-        `Failed to create session: ${message}. Check the database permissions or enter different project credentials.`,
-      );
     }
+  }
+
+  captureLocalSnapshot() {
+    return {
+      date: this.date,
+      startTime: this.startTime || "",
+      memo: document.getElementById("memoInput")?.value ?? this.memo ?? "",
+      notes: document.getElementById("notesInput")?.value ?? this.notes ?? "",
+      tasks: [...this.tasks],
+      taskIds: [...(this.taskIds || [])],
+      gridData: this.tasks.map((_, index) =>
+        Array.from(
+          this.gridData[index] || new Array(TimeCalculations.intervalCount).fill(false),
+        ).slice(0, TimeCalculations.intervalCount),
+      ),
+    };
+  }
+
+  hasSessionData(snapshot) {
+    return Boolean(
+      snapshot.tasks.length ||
+      snapshot.gridData.some((row) => row.some(Boolean)) ||
+      snapshot.startTime ||
+      snapshot.memo ||
+      snapshot.notes,
+    );
+  }
+
+  async getCloudSnapshot(session) {
+    const intervals = await this.db.getSessionIntervals(session.id);
+    const tasks = session.tasks || [];
+    const taskIndexById = new Map(tasks.map((task, index) => [String(task.id), index]));
+    const gridData = tasks.map(() =>
+      new Array(TimeCalculations.intervalCount).fill(false),
+    );
+    for (const interval of intervals) {
+      const taskIndex = taskIndexById.get(String(interval.task_id));
+      const intervalIndex = Number(interval.interval_index);
+      if (
+        taskIndex !== undefined &&
+        intervalIndex >= 0 &&
+        intervalIndex < TimeCalculations.intervalCount
+      ) {
+        gridData[taskIndex][intervalIndex] = true;
+      }
+    }
+    return {
+      date: session.date,
+      startTime: session.start_time || "",
+      memo: session.memo || "",
+      notes: session.notes || "",
+      tasks: tasks.map((task) => task.name),
+      taskIds: tasks.map((task) => task.id),
+      gridData,
+    };
+  }
+
+  snapshotsMatch(left, right) {
+    const signature = (snapshot) => {
+      const normalize = (name) => name.trim().toLocaleLowerCase();
+      const tasks = snapshot.tasks.map(normalize).sort();
+      const intervals = [];
+      snapshot.tasks.forEach((name, taskIndex) => {
+        snapshot.gridData[taskIndex]?.forEach((filled, intervalIndex) => {
+          if (filled) intervals.push(`${normalize(name)}:${intervalIndex}`);
+        });
+      });
+      intervals.sort();
+      return JSON.stringify({
+        tasks,
+        intervals,
+        startTime: snapshot.startTime,
+        memo: snapshot.memo,
+        notes: snapshot.notes,
+      });
+    };
+    return signature(left) === signature(right);
+  }
+
+  saveLocalBackup(keyPrefix) {
+    this.saveToLocalStorage();
+    localStorage.setItem(
+      `${keyPrefix}:${this.date}`,
+      localStorage.getItem("ettGridState"),
+    );
+  }
+
+  mergeSnapshots(localSnapshot, cloudSnapshot, sessionId) {
+    const normalize = (name) => name.trim().toLocaleLowerCase();
+    const merged = new Map();
+    const addTask = (name, id, intervals) => {
+      const key = normalize(name);
+      const existing = merged.get(key);
+      if (existing) {
+        if (id !== undefined && id !== null) existing.id = id;
+        intervals.forEach((filled, index) => {
+          existing.intervals[index] ||= Boolean(filled);
+        });
+      } else {
+        merged.set(key, {
+          name,
+          id,
+          intervals: Array.from(
+            intervals || new Array(TimeCalculations.intervalCount).fill(false),
+          ).slice(0, TimeCalculations.intervalCount),
+        });
+      }
+    };
+
+    localSnapshot.tasks.forEach((name, index) =>
+      addTask(name, localSnapshot.taskIds[index], localSnapshot.gridData[index]),
+    );
+    cloudSnapshot.tasks.forEach((name, index) =>
+      addTask(name, cloudSnapshot.taskIds[index], cloudSnapshot.gridData[index]),
+    );
+
+    this.tasks = [...merged.values()].map((task) => task.name);
+    this.taskIds = [...merged.values()].map((task) => task.id);
+    this.taskIdMap = Object.fromEntries(
+      [...merged.values()].map((task) => [task.name, task.id]),
+    );
+    this.gridData = [...merged.values()].map((task) => task.intervals);
+    this.sessionId = sessionId;
+    this.startTime = localSnapshot.startTime || cloudSnapshot.startTime;
+    this.memo = this.mergeTextField("memo", localSnapshot.memo, cloudSnapshot.memo);
+    this.notes = this.mergeTextField("notes", localSnapshot.notes, cloudSnapshot.notes);
+    document.getElementById("memoInput").value = this.memo;
+    document.getElementById("notesInput").value = this.notes;
+    this.renderGrid();
+    this.updateTaskCount();
+    this.updateSummary();
+    this.saveToLocalStorage();
+  }
+
+  mergeTextField(label, localValue, cloudValue) {
+    if (localValue && cloudValue && localValue !== cloudValue) {
+      return confirm(
+        `Local and cloud ${label} differ. Keep the local ${label}? Choose Cancel to use the cloud value.`,
+      )
+        ? localValue
+        : cloudValue;
+    }
+    return localValue || cloudValue || "";
   }
 
   selectCloudSession(sessions) {
@@ -188,6 +446,7 @@ class GridTaskTracker {
   }
 
   async loadSessionFromSupabase(session, expectedDate = this.date) {
+    if (!this.isCloudReady()) return;
     const intervals = await this.db.getSessionIntervals(session.id);
     await this.refreshTaskCatalog();
     this.restoreSessionData(session, expectedDate);
@@ -212,10 +471,11 @@ class GridTaskTracker {
     this.updateSummary();
     this.updateTimeCalculations();
     this.saveToLocalStorage();
+    this.recordSyncSuccess();
   }
 
   async refreshTaskCatalog() {
-    if (!hasSupabaseConfig() || !this.db.getTaskCatalog) return;
+    if (!this.isCloudReady() || !this.db.getTaskCatalog) return;
     const [catalog, totals] = await Promise.all([
       this.db.getTaskCatalog(),
       this.db.getTaskDayTotals(),
@@ -266,12 +526,15 @@ class GridTaskTracker {
     if (this.isFullSyncing || this.isInitializingSession || this.isSyncing)
       throw new Error("Wait for syncing to finish.");
     this.isFullSyncing = true;
+    this.renderSyncStatus();
     const container = document.querySelector(".container");
     const wasInert = container.inert;
     container.inert = true;
     try {
-      if (this.sessionId && this.isCloudTaskId(task.id))
+      if (this.isCloudReady() && this.sessionId && this.isCloudTaskId(task.id)) {
         await this.db.attachTask(this.sessionId, task.id);
+        this.recordSyncSuccess();
+      }
       this.tasks.push(task.name);
       this.taskIds.push(task.id);
       this.gridData.push(new Array(TimeCalculations.intervalCount).fill(false));
@@ -282,6 +545,7 @@ class GridTaskTracker {
       this.saveToLocalStorage();
     } finally {
       this.isFullSyncing = false;
+      this.renderSyncStatus();
       container.inert = wasInert;
     }
   }
@@ -513,7 +777,7 @@ class GridTaskTracker {
     this.saveToLocalStorage();
 
     // Sync to Supabase asynchronously
-    if (this.sessionId) {
+    if (this.isCloudReady() && this.sessionId) {
       this.trackPendingWrite(this.createTaskInSupabase(name, localId));
     }
   }
@@ -522,6 +786,7 @@ class GridTaskTracker {
    * Create task in Supabase
    */
   async createTaskInSupabase(taskName, localId) {
+    if (!this.isCloudReady() || !this.sessionId) return;
     const sessionId = this.sessionId;
     try {
       const result = await this.db.createTask(sessionId, {
@@ -538,6 +803,7 @@ class GridTaskTracker {
       this.updateTaskPicker();
       this.updateSummary();
       this.saveToLocalStorage();
+      this.recordSyncSuccess();
       console.log("Task synced to Supabase:", taskName, taskId);
     } catch (error) {
       console.error("Failed to sync task to Supabase:", error);
@@ -623,10 +889,9 @@ class GridTaskTracker {
     try {
       await this.waitForPendingWrites();
       const taskId = this.getTaskId(taskIdx);
-      if (this.sessionId && this.isCloudTaskId(taskId)) {
+      if (this.isCloudReady() && this.sessionId && this.isCloudTaskId(taskId)) {
         await this.db.updateTask(this.sessionId, taskId, { name });
-      } else if (this.sessionId) {
-        throw new Error("Sync this task before renaming it.");
+        this.recordSyncSuccess();
       }
       this.tasks[taskIdx] = name;
       delete this.taskIdMap[previousName];
@@ -661,7 +926,7 @@ class GridTaskTracker {
     this.saveToLocalStorage();
 
     // Delete from Supabase asynchronously
-    if (this.sessionId && this.isCloudTaskId(taskId)) {
+    if (this.isCloudReady() && this.sessionId && this.isCloudTaskId(taskId)) {
       this.trackPendingWrite(this.deleteTaskFromSupabase(taskId));
     }
   }
@@ -670,8 +935,10 @@ class GridTaskTracker {
    * Delete task from Supabase
    */
   async deleteTaskFromSupabase(taskId) {
+    if (!this.isCloudReady() || !this.sessionId) return;
     try {
       await this.db.deleteTask(this.sessionId, taskId);
+      this.recordSyncSuccess();
       console.log("Task removed from this session:", taskId);
     } catch (error) {
       console.error("Failed to delete task from Supabase:", error);
@@ -738,7 +1005,7 @@ class GridTaskTracker {
       this.renderGrid();
       this.updateTaskCount();
       this.updateSummary();
-      if (hasSupabaseConfig()) {
+      if (this.isCloudReady()) {
         this.sessionInitialization = this.initializeSession();
       }
     }
@@ -794,7 +1061,7 @@ class GridTaskTracker {
       if (cached) {
         this.loadFromLocalStorage(JSON.stringify(cached));
         await this.refreshTaskCatalog();
-      } else if (hasSupabaseConfig()) {
+      } else if (this.isCloudReady()) {
         const sessions = await this.db.getSessionsForDate(date);
         const session = this.selectCloudSession(sessions);
         if (session) {
@@ -812,7 +1079,6 @@ class GridTaskTracker {
         this.restoreSessionData({ id: null, date, tasks: [] }, date);
       }
       this.followToday = date === TimeCalculations.localDate(new Date());
-      this.lastSyncTime = null;
       this.renderGrid();
       this.updateTaskCount();
       this.updateSummary();
@@ -1036,8 +1302,10 @@ class GridTaskTracker {
   trackPendingWrite(write) {
     const pending = Promise.resolve(write).finally(() => {
       this.pendingWrites.delete(pending);
+      this.renderSyncStatus();
     });
     this.pendingWrites.add(pending);
+    this.renderSyncStatus();
     return pending;
   }
 
@@ -1049,14 +1317,16 @@ class GridTaskTracker {
 
   async refreshFromSupabase() {
     if (this.isFullSyncing || this.isSyncing) return;
-    if (!hasSupabaseConfig()) {
-      window.showSupabaseSetupModal?.("Configure Supabase before refreshing.");
+    if (!this.hasAuthenticatedCloud()) {
+      alert("Sign in to Supabase before refreshing cloud data.");
       return;
     }
+    this.syncPausedForConflict = false;
     const button = document.getElementById("refreshDbBtn");
     const container = document.querySelector(".container");
     const wasInert = container.inert;
     this.isFullSyncing = true;
+    this.renderSyncStatus();
     container.inert = true;
     button.disabled = true;
     button.textContent = "Loading...";
@@ -1079,12 +1349,13 @@ class GridTaskTracker {
       this.saveToLocalStorage();
       localStorage.setItem("ettGridBeforeRefresh", localStorage.getItem("ettGridState"));
       await this.loadSessionFromSupabase(session);
-      this.lastSyncTime = new Date().toISOString();
+      this.recordSyncSuccess();
     } catch (error) {
       console.error("Failed to refresh from Supabase:", error);
       alert(`Refresh failed: ${error.message || "Unknown error"}`);
     } finally {
       this.isFullSyncing = false;
+      this.renderSyncStatus();
       container.inert = wasInert;
       button.disabled = false;
       button.textContent = "Refresh from DB";
@@ -1094,12 +1365,14 @@ class GridTaskTracker {
   async syncAndReloadFromSupabase() {
     const button = document.getElementById("syncReloadBtn");
     if (this.isFullSyncing) return;
-    if (!hasSupabaseConfig()) {
-      window.showSupabaseSetupModal?.("Configure Supabase before syncing.");
+    if (!this.hasAuthenticatedCloud()) {
+      alert("Sign in to Supabase before syncing cloud data.");
       return;
     }
+    this.syncPausedForConflict = false;
 
     this.isFullSyncing = true;
+    this.renderSyncStatus();
     const container = document.querySelector(".container");
     const wasInert = container.inert;
     container.inert = true;
@@ -1137,12 +1410,23 @@ class GridTaskTracker {
         const knownId = this.getTaskId(taskIndex);
         let taskId = knownId;
         if (!this.isCloudTaskId(taskId)) {
-          const createdTask = await this.db.createTask(this.sessionId, {
-            name: taskName,
-            duration_minutes: 0,
-          });
-          taskId = createdTask?.id || createdTask?.[0]?.id;
-          if (!taskId) throw new Error(`Could not sync task "${taskName}".`);
+          const normalizedName = taskName.trim().toLocaleLowerCase();
+          const reusableTask = (this.taskCatalog || []).find(
+            (task) =>
+              this.isCloudTaskId(task.id) &&
+              task.name.trim().toLocaleLowerCase() === normalizedName,
+          );
+          if (reusableTask) {
+            taskId = reusableTask.id;
+            await this.db.attachTask(this.sessionId, taskId);
+          } else {
+            const createdTask = await this.db.createTask(this.sessionId, {
+              name: taskName,
+              duration_minutes: 0,
+            });
+            taskId = createdTask?.id || createdTask?.[0]?.id;
+            if (!taskId) throw new Error(`Could not sync task "${taskName}".`);
+          }
           this.replaceCachedTaskId(knownId, taskId, taskName);
           this.taskIds[taskIndex] = taskId;
         } else if (!remoteTasks.some((task) => String(task.id) === String(taskId))) {
@@ -1205,7 +1489,7 @@ class GridTaskTracker {
       if (!refreshedSession)
         throw new Error("The Supabase session could not be reloaded.");
       await this.loadSessionFromSupabase(refreshedSession);
-      this.lastSyncTime = new Date().toISOString();
+      this.recordSyncSuccess();
       if (button) button.textContent = "Synced";
       window.setTimeout(() => {
         if (button) button.textContent = "Sync & Reload";
@@ -1215,6 +1499,7 @@ class GridTaskTracker {
       alert(`Sync failed: ${error.message || "Unknown Supabase error"}`);
     } finally {
       this.isFullSyncing = false;
+      this.renderSyncStatus();
       container.inert = wasInert;
       if (button) {
         button.disabled = false;
@@ -1229,6 +1514,7 @@ class GridTaskTracker {
    * Sync interval toggle to Supabase
    */
   async syncIntervalToSupabase(intervalIdx, taskIdx, isFilled) {
+    if (!this.isCloudReady() || !this.sessionId) return;
     const taskName = this.tasks[taskIdx];
     const taskId = this.getTaskId(taskIdx);
 
@@ -1245,6 +1531,7 @@ class GridTaskTracker {
         // Delete interval entry
         await this.db.deleteInterval(this.sessionId, taskId, intervalIdx);
       }
+      this.recordSyncSuccess();
       console.log(
         `Interval ${intervalIdx} for task ${taskName} synced (filled=${isFilled})`,
       );
@@ -1571,7 +1858,6 @@ class GridTaskTracker {
     this.taskIdMap = {};
     this.gridData = [];
     this.sessionId = null;
-    this.lastSyncTime = null;
     this.startTime = "";
     this.memo = "";
     this.notes = "";
@@ -1622,6 +1908,7 @@ class GridTaskTracker {
    * Sync session metadata to Supabase
    */
   async syncToSupabase() {
+    if (!this.isCloudReady()) return;
     if (
       this.followToday !== false &&
       this.date !== TimeCalculations.localDate(new Date())
@@ -1638,6 +1925,7 @@ class GridTaskTracker {
       return;
 
     this.isSyncing = true;
+    this.renderSyncStatus();
 
     try {
       // Save latest form values
@@ -1653,12 +1941,13 @@ class GridTaskTracker {
       };
 
       await this.db.updateSession(this.sessionId, sessionData);
-      this.lastSyncTime = new Date().toISOString();
+      this.recordSyncSuccess();
       console.log("Session synced to Supabase at", this.lastSyncTime);
     } catch (error) {
       console.error("Failed to sync session to Supabase:", error);
     } finally {
       this.isSyncing = false;
+      this.renderSyncStatus();
     }
   }
 
@@ -1710,15 +1999,35 @@ class GridTaskTracker {
    * Re-initialize Supabase connection
    * Called when user configures Supabase credentials
    */
-  async setupSupabase() {
+  async setupSupabase(accessToken) {
     this.db = getSupabaseClient();
-    if (!hasSupabaseConfig()) {
-      console.error("Supabase credentials are not configured");
-      return;
+    if (!hasSupabaseConfig() || !accessToken || !this.db) {
+      this.cloudAuthenticated = false;
+      this.renderSyncStatus();
+      return false;
     }
-
+    this.db.setAccessToken(accessToken);
+    this.cloudAuthenticated = this.db.isAuthenticated();
+    if (!this.cloudAuthenticated) {
+      this.renderSyncStatus();
+      return false;
+    }
+    this.syncPausedForConflict = false;
+    this.renderSyncStatus();
     this.sessionInitialization = this.initializeSession();
     await this.sessionInitialization;
+    if (this.pendingInitialSyncAction === "upload") {
+      this.pendingInitialSyncAction = null;
+      await this.syncAndReloadFromSupabase();
+    }
+    return true;
+  }
+
+  disableSupabase() {
+    this.cloudAuthenticated = false;
+    this.syncPausedForConflict = false;
+    this.db = null;
+    this.renderSyncStatus();
   }
 }
 

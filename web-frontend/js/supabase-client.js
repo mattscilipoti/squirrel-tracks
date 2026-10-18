@@ -3,35 +3,24 @@
  * Handles all database operations and authentication for ETT
  */
 
-// Initialize Supabase client
-// Can be set from config modal or localStorage
-let SUPABASE_URL =
-  localStorage.getItem("supabase_url") || "https://YOUR_PROJECT.supabase.co";
-let SUPABASE_API_KEY = localStorage.getItem("supabase_key") || "YOUR_ANON_KEY";
+const configuredSupabase = globalThis.SUPABASE_CONFIG || {};
+let SUPABASE_URL = configuredSupabase.url || "";
+let SUPABASE_PUBLISHABLE_KEY = configuredSupabase.publishableKey || "";
+const AUTH_SESSION_KEY_PREFIX = "ett_auth_session:";
 
-const AUTH_SESSION_KEY = "ett_auth_session";
-
-/**
- * Configure Supabase credentials (called from setup modal)
- */
-function configureSupabase(url, apiKey) {
-  SUPABASE_URL = url;
-  SUPABASE_API_KEY = apiKey;
-  localStorage.setItem("supabase_url", url);
-  localStorage.setItem("supabase_key", apiKey);
-
-  // Re-initialize client
-  supabaseClient = null;
-  return getSupabaseClient();
+function reportCloudConnectivity(connected) {
+  if (typeof window === "undefined" || typeof CustomEvent === "undefined") return;
+  window.dispatchEvent(new CustomEvent("app-cloud-connectivity", { detail: connected }));
 }
 
 function hasSupabaseConfig() {
-  return Boolean(
-    SUPABASE_URL &&
-    SUPABASE_API_KEY &&
-    !SUPABASE_URL.includes("YOUR_PROJECT") &&
-    SUPABASE_API_KEY !== "YOUR_ANON_KEY",
-  );
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY.startsWith("sb_publishable_"))
+    return false;
+  try {
+    return ["http:", "https:"].includes(new URL(SUPABASE_URL).protocol);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -39,10 +28,11 @@ function hasSupabaseConfig() {
  * Uses Supabase GoTrue REST API directly (no SDK).
  */
 class SupabaseAuth {
-  constructor(url, anonKey) {
+  constructor(url, publishableKey) {
     this.url = url;
-    this.anonKey = anonKey;
+    this.publishableKey = publishableKey;
     this.authURL = `${url}/auth/v1`;
+    this.storageKey = `${AUTH_SESSION_KEY_PREFIX}${encodeURIComponent(url)}`;
     this._refreshTimer = null;
   }
 
@@ -50,16 +40,23 @@ class SupabaseAuth {
   async _authRequest(path, body, accessToken = null) {
     const headers = {
       "Content-Type": "application/json",
-      apikey: this.anonKey,
+      apikey: this.publishableKey,
     };
     if (accessToken) {
       headers.Authorization = `Bearer ${accessToken}`;
     }
-    const res = await fetch(`${this.authURL}${path}`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
+    let res;
+    try {
+      res = await fetch(`${this.authURL}${path}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      reportCloudConnectivity(false);
+      throw error;
+    }
+    reportCloudConnectivity(true);
     const data = await res.json();
     if (!res.ok) {
       throw new Error(
@@ -126,7 +123,7 @@ class SupabaseAuth {
   /** Read stored session from localStorage. */
   getSession() {
     try {
-      return JSON.parse(localStorage.getItem(AUTH_SESSION_KEY));
+      return JSON.parse(localStorage.getItem(this.storageKey));
     } catch {
       return null;
     }
@@ -164,11 +161,11 @@ class SupabaseAuth {
       expires_at: Math.floor(Date.now() / 1000) + data.expires_in,
       user: data.user,
     };
-    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    localStorage.setItem(this.storageKey, JSON.stringify(session));
   }
 
   clearSession() {
-    localStorage.removeItem(AUTH_SESSION_KEY);
+    localStorage.removeItem(this.storageKey);
     this._clearRefreshTimer();
   }
 
@@ -197,26 +194,31 @@ let supabaseAuth = null;
 
 function getSupabaseAuth() {
   if (!supabaseAuth && hasSupabaseConfig()) {
-    supabaseAuth = new SupabaseAuth(SUPABASE_URL, SUPABASE_API_KEY);
+    supabaseAuth = new SupabaseAuth(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
   }
   return supabaseAuth;
 }
 
 class SupabaseClient {
-  constructor(url, key, accessToken = null) {
+  constructor(url, publishableKey, accessToken = null) {
     this.url = url;
-    this.key = key;
+    this.publishableKey = publishableKey;
     this.baseURL = `${url}/rest/v1`;
     this.headers = {
       "Content-Type": "application/json",
-      apikey: key,
-      Authorization: `Bearer ${accessToken || key}`,
+      apikey: publishableKey,
     };
+    this.setAccessToken(accessToken);
   }
 
   /** Update the Authorization header after a token refresh. */
   setAccessToken(token) {
-    this.headers.Authorization = `Bearer ${token}`;
+    if (token) this.headers.Authorization = `Bearer ${token}`;
+    else delete this.headers.Authorization;
+  }
+
+  isAuthenticated() {
+    return Boolean(this.headers.Authorization);
   }
 
   /**
@@ -238,8 +240,11 @@ class SupabaseClient {
       options.body = JSON.stringify(data);
     }
 
+    let receivedResponse = false;
     try {
       const response = await fetch(url, options);
+      receivedResponse = true;
+      reportCloudConnectivity(true);
 
       if (!response.ok) {
         const error = await response.json();
@@ -254,6 +259,7 @@ class SupabaseClient {
 
       return await response.json();
     } catch (error) {
+      if (!receivedResponse) reportCloudConnectivity(false);
       console.error("Request failed:", error);
       throw error;
     }
@@ -434,20 +440,22 @@ let supabaseClient = null;
 
 function initSupabaseClient(
   url = SUPABASE_URL,
-  key = SUPABASE_API_KEY,
+  publishableKey = SUPABASE_PUBLISHABLE_KEY,
   accessToken = null,
 ) {
-  supabaseClient = new SupabaseClient(url, key, accessToken);
+  if (!url || !publishableKey) return null;
+  supabaseClient = new SupabaseClient(url, publishableKey, accessToken);
   return supabaseClient;
 }
 
 function getSupabaseClient() {
+  if (!hasSupabaseConfig()) return null;
   if (!supabaseClient) {
     const auth = getSupabaseAuth();
     const session = auth?.getSession();
     supabaseClient = new SupabaseClient(
       SUPABASE_URL,
-      SUPABASE_API_KEY,
+      SUPABASE_PUBLISHABLE_KEY,
       session?.access_token || null,
     );
   }
