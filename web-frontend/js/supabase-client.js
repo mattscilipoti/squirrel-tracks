@@ -298,7 +298,7 @@ class SupabaseClient {
     };
   }
 
-  async getAllRows(table, select, order) {
+  async getAllRows(table, select, order, filter = "") {
     const rows = [];
     for (let offset = 0; ; offset += 1000) {
       const params = new URLSearchParams({
@@ -307,7 +307,8 @@ class SupabaseClient {
         limit: "1000",
         offset: String(offset),
       });
-      const page = await this.request("GET", `/${table}?${params}`);
+      const query = filter ? `${filter}&${params}` : String(params);
+      const page = await this.request("GET", `/${table}?${query}`);
       rows.push(...page);
       if (page.length < 1000) return rows;
     }
@@ -365,6 +366,37 @@ class SupabaseClient {
       "DELETE",
       `/session_tasks?task_id=eq.${taskId}&session_id=eq.${sessionId}`,
     );
+  }
+
+  async getTaskDetails(taskId) {
+    const rows = await this.request(
+      "GET",
+      `/tasks?id=eq.${taskId}&select=id,name,created_at,updated_at`,
+    );
+    return rows?.[0] || null;
+  }
+
+  /** Every filled interval for a task across all days, as { date, slot }. */
+  async getTaskIntervals(taskId) {
+    const [intervals, sessions] = await Promise.all([
+      this.getAllRows(
+        "intervals",
+        "session_id,interval_index",
+        "session_id.asc,interval_index.asc",
+        `task_id=eq.${taskId}`,
+      ),
+      this.getAllRows("sessions", "id,date", "id.asc"),
+    ]);
+    const dates = new Map(sessions.map((session) => [String(session.id), session.date]));
+    return intervals.map((row) => ({
+      date: dates.get(String(row.session_id)) || "",
+      slot: row.interval_index,
+    }));
+  }
+
+  /** Permanently delete the task; session_tasks and intervals cascade. */
+  async deleteTaskEverywhere(taskId) {
+    return this.request("DELETE", `/tasks?id=eq.${taskId}`);
   }
 
   /**

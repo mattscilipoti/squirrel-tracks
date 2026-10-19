@@ -507,15 +507,31 @@ class GridTaskTracker {
     placeholder.value = "";
     placeholder.textContent = "Reuse a task...";
     select.appendChild(placeholder);
+    const available = document.createElement("optgroup");
+    available.label = "Available to add";
+    const onDay = document.createElement("optgroup");
+    onDay.label = "Already on this day";
     for (const task of this.taskCatalog || []) {
-      if (this.taskIds?.some((id) => String(id) === String(task.id))) continue;
+      const isOnDay = this.taskIds?.some((id) => String(id) === String(task.id));
       const option = document.createElement("option");
       option.value = String(task.id);
-      option.textContent = `${task.name} (#${task.id})`;
-      select.appendChild(option);
+      option.textContent = `${isOnDay ? "\u{1F6AB} " : ""}${task.name} (#${task.id})`;
+      if (isOnDay) option.dataset.onDay = "true";
+      (isOnDay ? onDay : available).appendChild(option);
+    }
+    for (const group of [available, onDay]) {
+      if (group.children.length) select.appendChild(group);
     }
     select.value = previous;
-    document.getElementById("reuseTaskBtn").disabled = !select.value;
+    this.updatePickerButtons();
+  }
+
+  updatePickerButtons() {
+    const select = document.getElementById("existingTaskSelect");
+    const selected = select.selectedOptions[0];
+    document.getElementById("reuseTaskBtn").disabled =
+      !select.value || selected?.dataset.onDay === "true";
+    document.getElementById("deleteTaskBtn").disabled = !select.value;
   }
 
   async reuseTask(id) {
@@ -551,8 +567,15 @@ class GridTaskTracker {
   }
 
   initializeUI() {
-    document.getElementById("existingTaskSelect").addEventListener("change", (event) => {
-      document.getElementById("reuseTaskBtn").disabled = !event.target.value;
+    document.getElementById("existingTaskSelect").addEventListener("change", () => {
+      this.updatePickerButtons();
+    });
+    document.getElementById("deleteTaskBtn").addEventListener("click", async () => {
+      try {
+        await this.confirmDeleteTask(document.getElementById("existingTaskSelect").value);
+      } catch (error) {
+        alert(error.message || "Could not delete the task.");
+      }
     });
     document.getElementById("reuseTaskBtn").addEventListener("click", async () => {
       try {
@@ -907,18 +930,22 @@ class GridTaskTracker {
     }
   }
 
+  spliceTaskRow(taskIdx) {
+    const taskName = this.tasks[taskIdx];
+    this.tasks.splice(taskIdx, 1);
+    this.taskIds.splice(taskIdx, 1);
+    this.gridData.splice(taskIdx, 1);
+    delete this.taskIdMap[taskName];
+  }
+
   /**
    * Remove task by index
    */
   removeTask(taskIdx) {
     this.ensureTaskIds();
-    const taskName = this.tasks[taskIdx];
     const taskId = this.getTaskId(taskIdx);
 
-    this.tasks.splice(taskIdx, 1);
-    this.taskIds.splice(taskIdx, 1);
-    this.gridData.splice(taskIdx, 1);
-    delete this.taskIdMap[taskName];
+    this.spliceTaskRow(taskIdx);
 
     this.renderGrid();
     this.updateSummary();
@@ -943,6 +970,141 @@ class GridTaskTracker {
     } catch (error) {
       console.error("Failed to delete task from Supabase:", error);
     }
+  }
+
+  /** Filled intervals for a task from local snapshots, including the live day. */
+  localTaskIntervals(taskId) {
+    const history = JSON.parse(localStorage.getItem("ettGridHistory") || "{}");
+    history[this.date] = this.captureLocalSnapshot();
+    const entries = [];
+    for (const [key, state] of Object.entries(history)) {
+      const ids =
+        state.taskIds || (state.tasks || []).map((name) => state.taskIdMap?.[name]);
+      ids.forEach((id, index) => {
+        if (String(id) !== String(taskId)) return;
+        (state.gridData?.[index] || []).forEach((filled, slot) => {
+          if (filled) entries.push({ date: state.date || key, slot });
+        });
+      });
+    }
+    return entries;
+  }
+
+  renderDeleteTaskDetails(container, task, details, description) {
+    const when = (value) => (value ? new Date(value).toLocaleString() : "Not recorded");
+    const addRow = (term, value) => {
+      const dt = document.createElement("dt");
+      dt.textContent = term;
+      const dd = document.createElement("dd");
+      if (Array.isArray(value)) {
+        const list = document.createElement("ul");
+        for (const line of value) {
+          const item = document.createElement("li");
+          item.textContent = line;
+          list.appendChild(item);
+        }
+        dd.appendChild(list);
+      } else dd.textContent = value;
+      container.append(dt, dd);
+    };
+    container.replaceChildren();
+    addRow("Task", task.name);
+    addRow("Created", when(details?.created_at));
+    addRow("Last updated", when(details?.updated_at));
+    addRow("Intervals", String(description.count));
+    if (description.last.length) {
+      addRow("First 5", description.first);
+      addRow("Last 5", description.last);
+    } else if (description.first.length) {
+      addRow("All intervals", description.first);
+    }
+  }
+
+  async confirmDeleteTask(taskId) {
+    const task = (this.taskCatalog || []).find((entry) => String(entry.id) === taskId);
+    if (!task) throw new Error("Choose an existing task.");
+    if (this.isFullSyncing || this.isSyncing || this.isInitializingSession)
+      throw new Error("Wait for the current sync to finish, then try again.");
+    const isCloud = this.isCloudTaskId(taskId);
+    if (isCloud && !this.isCloudReady())
+      throw new Error("Sign in and connect to Supabase to delete a saved task.");
+    await this.waitForPendingWrites();
+    let details = null;
+    let entries;
+    if (isCloud) {
+      [details, entries] = await Promise.all([
+        this.db.getTaskDetails(taskId),
+        this.db.getTaskIntervals(taskId),
+      ]);
+    } else {
+      entries = this.localTaskIntervals(taskId);
+    }
+    const description = TimeCalculations.describeTaskIntervals(entries);
+    const confirmed = await window.chooseDeleteTask((container) =>
+      this.renderDeleteTaskDetails(container, task, details, description),
+    );
+    if (!confirmed) return false;
+    await this.deleteTaskEverywhere(taskId);
+    const count = description.count;
+    alert(
+      `Deleted task "${task.name}" and its ${count} interval${count === 1 ? "" : "s"}.`,
+    );
+    return true;
+  }
+
+  async deleteTaskEverywhere(taskId) {
+    if (this.isFullSyncing || this.isSyncing || this.isInitializingSession)
+      throw new Error("Wait for the current sync to finish, then try again.");
+    const container = document.querySelector(".container");
+    const wasInert = container.inert;
+    this.isFullSyncing = true;
+    container.inert = true;
+    try {
+      await this.waitForPendingWrites();
+      if (this.isCloudTaskId(taskId)) {
+        if (!this.isCloudReady())
+          throw new Error("Sign in and connect to Supabase to delete a saved task.");
+        await this.db.deleteTaskEverywhere(taskId);
+        this.recordSyncSuccess();
+      }
+      this.scrubDeletedTask(taskId);
+      this.ensureTaskIds();
+      const index = this.taskIds.findIndex((id) => String(id) === String(taskId));
+      if (index >= 0) this.spliceTaskRow(index);
+      this.updateTaskPicker();
+      this.renderGrid();
+      this.updateSummary();
+      this.updateTaskCount();
+      this.saveToLocalStorage();
+    } finally {
+      this.isFullSyncing = false;
+      container.inert = wasInert;
+    }
+  }
+
+  /** Drop a deleted task from every local cache so sync cannot recreate it. */
+  scrubDeletedTask(taskId) {
+    const history = JSON.parse(localStorage.getItem("ettGridHistory") || "{}");
+    for (const state of Object.values(history)) {
+      const ids =
+        state.taskIds || (state.tasks || []).map((name) => state.taskIdMap?.[name]);
+      const keep = ids.map((id) => String(id) !== String(taskId));
+      for (const [index, name] of (state.tasks || []).entries()) {
+        if (!keep[index]) delete state.taskIdMap?.[name];
+      }
+      state.tasks = (state.tasks || []).filter((_, index) => keep[index]);
+      state.gridData = (state.gridData || []).filter((_, index) => keep[index]);
+      state.taskIds = ids.filter((_, index) => keep[index]);
+    }
+    localStorage.setItem("ettGridHistory", JSON.stringify(history));
+    this.taskCatalog = (this.taskCatalog || []).filter(
+      (task) => String(task.id) !== String(taskId),
+    );
+    this.taskDayTotals = (this.taskDayTotals || []).filter(
+      (row) => String(row.task_id) !== String(taskId),
+    );
+    localStorage.setItem("ettTaskCatalog", JSON.stringify(this.taskCatalog));
+    localStorage.setItem("ettTaskDayTotals", JSON.stringify(this.taskDayTotals));
   }
 
   renameCachedTask(taskId, name) {

@@ -27,6 +27,26 @@ const TimeCalculations = {
     return [...counts.values()].reduce((total, count) => total + count, 0);
   },
 
+  slotLabel(slot) {
+    const minutes = slot * 15;
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  },
+
+  describeTaskIntervals(entries, edge = 5) {
+    const sorted = [...entries].sort(
+      (a, b) => String(a.date).localeCompare(String(b.date)) || a.slot - b.slot,
+    );
+    const label = (entry) =>
+      `${entry.date || "unknown date"} ${this.slotLabel(entry.slot)}`;
+    const count = sorted.length;
+    if (count <= edge * 2) return { count, first: sorted.map(label), last: [] };
+    return {
+      count,
+      first: sorted.slice(0, edge).map(label),
+      last: sorted.slice(-edge).map(label),
+    };
+  },
+
   reminderTick(now, nextReminderAt, intervalSeconds) {
     const intervalMilliseconds = intervalSeconds * 1000;
     const elapsedIntervals =

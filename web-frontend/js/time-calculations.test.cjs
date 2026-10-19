@@ -257,3 +257,35 @@ for (const timezone of ["America/New_York", "UTC", "Asia/Kolkata"]) {
       }));
   });
 }
+
+test("task interval descriptions list all intervals once up to ten, then first and last five", () => {
+  const entries = (count) =>
+    Array.from({ length: count }, (_, index) => ({
+      date: `2026-10-${String(10 + Math.floor(index / 4)).padStart(2, "0")}`,
+      slot: 36 + (index % 4),
+    })).reverse();
+  assert.deepEqual(TimeCalculations.describeTaskIntervals([]), {
+    count: 0,
+    first: [],
+    last: [],
+  });
+  const few = TimeCalculations.describeTaskIntervals(entries(3));
+  assert.deepEqual(few.first, [
+    "2026-10-10 09:00",
+    "2026-10-10 09:15",
+    "2026-10-10 09:30",
+  ]);
+  assert.deepEqual(few.last, []);
+  assert.equal(TimeCalculations.describeTaskIntervals(entries(10)).first.length, 10);
+  const many = TimeCalculations.describeTaskIntervals(entries(25));
+  assert.equal(many.count, 25);
+  assert.deepEqual(many.first[0], "2026-10-10 09:00");
+  assert.equal(many.first.length, 5);
+  assert.deepEqual(many.last, [
+    "2026-10-15 09:00",
+    "2026-10-15 09:15",
+    "2026-10-15 09:30",
+    "2026-10-15 09:45",
+    "2026-10-16 09:00",
+  ]);
+});

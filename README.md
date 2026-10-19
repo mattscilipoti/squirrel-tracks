@@ -95,6 +95,16 @@ totals use saved cloud counts and available per-session local snapshots, while
 the selected day's total reflects live edits. CSV includes task IDs, daily
 minutes, and all-days minutes. Local-only reusable tasks are browser-specific.
 
+The **Reuse a task...** list shows every task in two groups: **Available to add**
+and **Already on this day** (marked 🚫; these cannot be added again). Select any task
+and press 🗑 to delete it permanently from every day. The confirmation shows when the
+task was created and last updated, its total interval count, and its first and last 5
+intervals (all of them when there are 10 or fewer). Unlike a row's ×, which only detaches the
+task from the current day, deleting cannot be undone. Local-only tasks have no
+recorded dates. When it finishes, a message names the deleted task and its interval count. Before deleting cloud-backed tasks, apply
+[`20261019000000_delete_tasks_updated_at.sql`](supabase/migrations/20261019000000_delete_tasks_updated_at.sql),
+which also makes a rename update the task's last-updated time.
+
 Click a task name in the grid to edit it. Enter or leaving the field saves;
 Escape cancels. Blank names are rejected. Renaming changes the task's name across
 all days, preserving its ID and every day's bubbles. Removing a row detaches it

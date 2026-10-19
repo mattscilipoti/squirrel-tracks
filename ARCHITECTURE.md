@@ -64,7 +64,7 @@ rollover, reusable task behavior.
 | Table               | Key columns                                | Notes                                     |
 | ------------------- | ------------------------------------------ | ----------------------------------------- |
 | `sessions`          | id, status, date, memo, notes              | One per day                               |
-| `tasks`             | id, name                                   | Reusable across days (no session FK)      |
+| `tasks`             | id, name, created_at, updated_at           | Reusable across days (no session FK); `updated_at` maintained by trigger |
 | `session_tasks`     | session_id, task_id                        | Junction: which tasks appear on which day |
 | `intervals`         | session_id, task_id, interval_index (0-95) | Filled bubbles                            |
 | `schema_migrations` | version, name, applied_at                  | Migration tracking                        |
@@ -103,6 +103,7 @@ SELECT * FROM schema_migrations ORDER BY version;
 | 20261016100000 | create_schema_migrations     | applied |
 | 20261016100001 | auth_rls                     | applied |
 | 20261016100002 | revoke_anon_access           | applied |
+| 20261019000000 | delete_tasks_updated_at      | pending |
 
 ## Backend (`backend/`)
 

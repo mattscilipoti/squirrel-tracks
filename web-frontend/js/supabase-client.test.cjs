@@ -179,3 +179,35 @@ test("a rejected cloud request reports unreachable even when browser online stat
   await assert.rejects(context.db.request("GET", "/sessions"), /network unavailable/);
   assert.deepEqual(connectivity, [false]);
 });
+
+test("deleting a task everywhere deletes the task row, not just a day link", async () => {
+  const db = client();
+  const calls = [];
+  db.request = async (method, route) => {
+    calls.push({ method, route });
+  };
+  await db.deleteTaskEverywhere(5);
+  assert.deepEqual(calls, [{ method: "DELETE", route: "/tasks?id=eq.5" }]);
+});
+
+test("task details and intervals map sessions to dates and keep paging", async () => {
+  const db = client();
+  const routes = [];
+  db.request = async (method, route) => {
+    routes.push(route);
+    if (route.startsWith("/tasks?"))
+      return [{ id: 5, name: "T", created_at: "a", updated_at: "b" }];
+    if (route.startsWith("/intervals?"))
+      return [
+        { session_id: 2, interval_index: 40 },
+        { session_id: 9, interval_index: 41 },
+      ];
+    return [{ id: 2, date: "2026-10-14" }];
+  };
+  assert.equal((await db.getTaskDetails(5)).updated_at, "b");
+  assert.deepEqual(JSON.parse(JSON.stringify(await db.getTaskIntervals(5))), [
+    { date: "2026-10-14", slot: 40 },
+    { date: "", slot: 41 },
+  ]);
+  assert.ok(routes.some((route) => route.startsWith("/intervals?task_id=eq.5&select=")));
+});

@@ -1335,3 +1335,171 @@ test("restoring today's cloud session populates today's date", () => {
   assert.equal(elements.dateInput.value, "2026-10-15");
   assert.equal(tracker.sessionId, "today");
 });
+
+function deleteFixture() {
+  const setup = fixture("2026-10-15");
+  const { tracker, storage } = setup;
+  tracker.tasks = ["Task", "Other"];
+  tracker.taskIds = [5, 6];
+  tracker.taskIdMap = { Task: 5, Other: 6 };
+  tracker.gridData = [[true], [true, true]];
+  tracker.taskCatalog = [
+    { id: 5, name: "Task" },
+    { id: 6, name: "Other" },
+  ];
+  tracker.taskDayTotals = [
+    { session_id: 14, task_id: 5, interval_count: 3 },
+    { session_id: 14, task_id: 6, interval_count: 1 },
+  ];
+  storage.set(
+    "ettGridHistory",
+    JSON.stringify({
+      past: {
+        date: "2026-10-14",
+        sessionId: 14,
+        tasks: ["Task", "Other"],
+        taskIds: [5, 6],
+        taskIdMap: { Task: 5, Other: 6 },
+        gridData: [[true], [true, true]],
+      },
+    }),
+  );
+  for (const method of [
+    "renderGrid",
+    "updateSummary",
+    "updateTaskCount",
+    "updateTaskPicker",
+  ])
+    tracker[method] = () => {};
+  const shown = [];
+  tracker.renderDeleteTaskDetails = (container, task, details, description) =>
+    shown.push({ task, details, description });
+  setup.shown = shown;
+  return setup;
+}
+
+test("confirmed delete removes the task from the cloud, grid, and every local cache", async () => {
+  const { context, tracker, storage, container, shown, alerts } = deleteFixture();
+  const calls = [];
+  tracker.db = {
+    getTaskDetails: async (id) => ({ id, created_at: "2026-10-01T00:00:00Z" }),
+    getTaskIntervals: async () => [
+      { date: "2026-10-14", slot: 1 },
+      { date: "2026-10-15", slot: 2 },
+    ],
+    deleteTaskEverywhere: async (id) => calls.push(id),
+  };
+  context.window.chooseDeleteTask = async (render) => {
+    render({});
+    return true;
+  };
+  assert.equal(await tracker.confirmDeleteTask("5"), true);
+  assert.deepEqual(calls, ["5"]);
+  assert.deepEqual(alerts, ['Deleted task "Task" and its 2 intervals.']);
+  assert.equal(shown[0].description.count, 2);
+  assert.equal(shown[0].details.created_at, "2026-10-01T00:00:00Z");
+  assert.deepEqual(tracker.tasks, ["Other"]);
+  assert.deepEqual(tracker.taskIds, [6]);
+  assert.deepEqual(tracker.taskCatalog, [{ id: 6, name: "Other" }]);
+  assert.deepEqual(tracker.taskDayTotals, [
+    { session_id: 14, task_id: 6, interval_count: 1 },
+  ]);
+  const past = JSON.parse(storage.get("ettGridHistory")).past;
+  assert.deepEqual(past.tasks, ["Other"]);
+  assert.deepEqual(past.taskIds, [6]);
+  assert.deepEqual(past.taskIdMap, { Other: 6 });
+  assert.deepEqual(past.gridData, [[true, true]]);
+  assert.equal(JSON.parse(storage.get("ettTaskCatalog")).length, 1);
+  assert.equal(container.inert, false);
+});
+
+test("cancelling the delete dialog changes nothing", async () => {
+  const { context, tracker, alerts } = deleteFixture();
+  tracker.db = {
+    getTaskDetails: async () => null,
+    getTaskIntervals: async () => [],
+    deleteTaskEverywhere: async () => assert.fail("Deleted after cancel"),
+  };
+  context.window.chooseDeleteTask = async () => false;
+  assert.equal(await tracker.confirmDeleteTask("5"), false);
+  assert.deepEqual(alerts, []);
+  assert.deepEqual(tracker.tasks, ["Task", "Other"]);
+  assert.equal(tracker.taskCatalog.length, 2);
+});
+
+test("a failed cloud delete keeps all local data and unlocks editing", async () => {
+  const { context, tracker, storage, container } = deleteFixture();
+  tracker.db = {
+    getTaskDetails: async () => null,
+    getTaskIntervals: async () => [],
+    deleteTaskEverywhere: async () => {
+      throw new Error("permission denied");
+    },
+  };
+  context.window.chooseDeleteTask = async () => true;
+  await assert.rejects(() => tracker.confirmDeleteTask("5"), /permission denied/);
+  assert.deepEqual(tracker.tasks, ["Task", "Other"]);
+  assert.equal(tracker.taskCatalog.length, 2);
+  assert.equal(JSON.parse(storage.get("ettGridHistory")).past.tasks.length, 2);
+  assert.equal(tracker.isFullSyncing, false);
+  assert.equal(container.inert, false);
+});
+
+test("local-only tasks are deleted without the database and list intervals from snapshots", async () => {
+  const { context, tracker, storage, shown } = deleteFixture();
+  tracker.taskIds = ["local:a", 6];
+  tracker.taskIdMap = { Task: "local:a", Other: 6 };
+  tracker.taskCatalog[0].id = "local:a";
+  storage.set(
+    "ettGridHistory",
+    JSON.stringify({
+      past: {
+        date: "2026-10-14",
+        tasks: ["Task"],
+        taskIds: ["local:a"],
+        gridData: [[false, true, true]],
+      },
+    }),
+  );
+  tracker.db = {
+    getTaskIntervals: async () => assert.fail("Read the cloud for a local task"),
+    deleteTaskEverywhere: async () => assert.fail("Deleted a local task in the cloud"),
+  };
+  context.window.chooseDeleteTask = async (render) => {
+    render({});
+    return true;
+  };
+  assert.equal(await tracker.confirmDeleteTask("local:a"), true);
+  assert.equal(shown[0].details, null);
+  assert.equal(shown[0].description.count, 3);
+  assert.deepEqual(tracker.tasks, ["Other"]);
+  assert.deepEqual(JSON.parse(storage.get("ettGridHistory")).past.tasks, []);
+});
+
+test("saved tasks cannot be deleted while the cloud is unavailable", async () => {
+  const { tracker } = deleteFixture();
+  tracker.cloudAuthenticated = false;
+  await assert.rejects(() => tracker.confirmDeleteTask("5"), /Sign in/);
+  assert.equal(tracker.taskCatalog.length, 2);
+});
+
+test("picker buttons: tasks already on the day can be deleted but not added again", () => {
+  const { elements, tracker } = deleteFixture();
+  elements.reuseTaskBtn = {};
+  elements.deleteTaskBtn = {};
+  elements.existingTaskSelect = { value: "", selectedOptions: [] };
+  tracker.updatePickerButtons();
+  assert.equal(elements.reuseTaskBtn.disabled, true);
+  assert.equal(elements.deleteTaskBtn.disabled, true);
+  elements.existingTaskSelect = {
+    value: "5",
+    selectedOptions: [{ dataset: { onDay: "true" } }],
+  };
+  tracker.updatePickerButtons();
+  assert.equal(elements.reuseTaskBtn.disabled, true);
+  assert.equal(elements.deleteTaskBtn.disabled, false);
+  elements.existingTaskSelect = { value: "9", selectedOptions: [{ dataset: {} }] };
+  tracker.updatePickerButtons();
+  assert.equal(elements.reuseTaskBtn.disabled, false);
+  assert.equal(elements.deleteTaskBtn.disabled, false);
+});

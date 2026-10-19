@@ -51,6 +51,30 @@
       </div>
     </div>
 
+    <div id="deleteTaskModal" class="modal hidden">
+      <div
+        class="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="deleteTaskTitle"
+      >
+        <h2 id="deleteTaskTitle">Delete task?</h2>
+        <p>
+          This permanently deletes the task and its intervals on every day. It cannot be
+          undone.
+        </p>
+        <dl id="deleteTaskDetails" class="delete-task-details"></dl>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-danger" data-delete-choice="delete">
+            Delete task
+          </button>
+          <button type="button" class="btn btn-tertiary" data-delete-choice="cancel">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div id="syncConflictModal" class="modal hidden">
       <div
         class="modal-content"
@@ -198,6 +222,16 @@
               title="Add the selected existing task to this day without copying or merging it"
             >
               Add existing
+            </button>
+            <button
+              id="deleteTaskBtn"
+              class="btn btn-danger btn-small"
+              type="button"
+              disabled
+              aria-label="Delete selected task everywhere"
+              title="Permanently delete the selected task and all its intervals on every day"
+            >
+              🗑
             </button>
           </div>
           <div class="spacer"></div>
@@ -465,6 +499,22 @@
             syncConflictModal.classList.add("hidden");
             resolveSyncConflict?.(button.dataset.syncChoice);
             resolveSyncConflict = null;
+          });
+        });
+
+        const deleteTaskModal = document.getElementById("deleteTaskModal");
+        let resolveDeleteTask;
+        window.chooseDeleteTask = (render) =>
+          new Promise((resolve) => {
+            resolveDeleteTask = resolve;
+            render(document.getElementById("deleteTaskDetails"));
+            deleteTaskModal.classList.remove("hidden");
+          });
+        deleteTaskModal.querySelectorAll("[data-delete-choice]").forEach((button) => {
+          button.addEventListener("click", () => {
+            deleteTaskModal.classList.add("hidden");
+            resolveDeleteTask?.(button.dataset.deleteChoice === "delete");
+            resolveDeleteTask = null;
           });
         });
 
