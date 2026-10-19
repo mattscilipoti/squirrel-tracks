@@ -452,6 +452,7 @@
         <p class="footer-credit">
           Made with <span role="img" aria-label="love">♥</span> by Great Enough Works LLC
           · 2026
+          <span id="appVersion"></span>
         </p>
       </footer>
     </div>
@@ -461,6 +462,7 @@
       integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o"
       crossorigin="anonymous"
     ></script>
+    <script src="js/version.js"></script>
     <script src="js/config.js"></script>
     <script src="js/supabase-client.js"></script>
     <script src="js/realtime-client.js"></script>
@@ -470,6 +472,23 @@
     <script>
       // ── Optional Supabase auth flow ────────────────────────────────
       document.addEventListener("DOMContentLoaded", () => {
+        // ── Build version in the footer ─────────────────────────────
+        const version = window.APP_VERSION;
+        const versionLabel = document.getElementById("appVersion");
+        if (versionLabel && version) {
+          if (version.commit === "dev") {
+            versionLabel.textContent = "· dev build";
+          } else {
+            const shortCommit = version.commit.slice(0, 7);
+            versionLabel.append("· Build ");
+            const link = document.createElement("a");
+            link.href = `https://github.com/${version.repo}/commit/${version.commit}`;
+            link.textContent = shortCommit;
+            link.title = "View this commit on GitHub";
+            versionLabel.append(link, ` (${version.date})`);
+          }
+        }
+
         // ── Login modal elements ────────────────────────────────────
         const loginModal = document.getElementById("loginModal");
         const loginForm = document.getElementById("loginForm");

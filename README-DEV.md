@@ -218,21 +218,13 @@ shared renames, and additive daily/all-days totals.
 
 ### Deploying to GitHub Pages
 
-The web frontend is deployed to GitHub Pages using the `gh-pages` branch via
-`git subtree push` ([reference](https://gist.github.com/cobyism/4730490)).
+`.github/workflows/pages.yml` deploys `web-frontend/` on every push to `main` that
+touches it (or by hand from the Actions tab). It first rewrites `js/version.js` with the
+deployed commit, which the page footer shows as `Build abc1234 (2026-10-19 14:03 UTC)`
+and links to that commit. Local runs show `dev build`.
 
-```bash
-git subtree push --prefix web-frontend origin gh-pages
-```
-
-If the `gh-pages` branch already exists and needs a fresh push:
-
-```bash
-git push origin :gh-pages && git subtree push --prefix web-frontend origin gh-pages
-```
-
-In the GitHub repo settings, configure Pages to deploy from the `gh-pages`
-branch using the root folder (`/`).
+One-time setup: in the GitHub repo, **Settings → Pages → Build and deployment →
+Source: GitHub Actions**. The old `gh-pages` branch is no longer used and can be deleted.
 
 ---
 
