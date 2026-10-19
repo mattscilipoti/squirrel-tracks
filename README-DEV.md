@@ -221,7 +221,8 @@ shared renames, and additive daily/all-days totals.
 `.github/workflows/pages.yml` deploys `web-frontend/` on every push to `main` that
 touches it (or by hand from the Actions tab). It first rewrites `js/version.js` with the
 deployed commit, which the page footer shows as `Build abc1234 (2026-10-19 14:03 UTC)`
-and links to that commit. Local runs show `dev build`.
+and links to that commit. Local runs show `dev build`. Test files
+(`*.test.cjs`) are removed before publishing.
 
 One-time setup: in the GitHub repo, **Settings → Pages → Build and deployment →
 Source: GitHub Actions**. The old `gh-pages` branch is no longer used and can be deleted.

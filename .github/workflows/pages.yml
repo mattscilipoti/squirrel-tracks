@@ -37,6 +37,9 @@ jobs:
           });
           VERSION
 
+      - name: Remove test files from the published site
+        run: rm -f web-frontend/js/*.test.cjs
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
