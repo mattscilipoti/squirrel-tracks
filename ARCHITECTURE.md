@@ -22,6 +22,16 @@ stores project-scoped sessions in localStorage, and refreshes tokens before
 expiry. If local and cloud state differ on connection, the user chooses whether
 to upload, load, merge, or cancel.
 
+### Live updates
+
+`RealtimeWatcher` subscribes to changes on `sessions`, `tasks`, `session_tasks`, and
+`intervals`. Events are only a signal (RLS limits what DELETE events carry). After a
+short debounce and once local writes have settled, `GridTaskTracker.refreshFromRemoteChange`
+re-reads the selected day, diffs it against local state with `RemoteChanges.diff`,
+applies any differences, and shows a summary notice. Own writes produce an empty diff and
+no message. If a local write failed to sync (`cloudWriteFailed`), remote changes are not
+applied and the notice says so.
+
 ## Web frontend (`web-frontend/`)
 
 No build step. Serve with any static HTTP server (`python3 -m http.server 5000`).
@@ -33,6 +43,8 @@ No build step. Serve with any static HTTP server (`python3 -m http.server 5000`)
 | `js/supabase-client.js`   | Custom Supabase REST client + `SupabaseAuth` class                            |
 | `js/app-grid.js`          | `GridTaskTracker` — main app: grid, tasks, sync, UI                           |
 | `js/time-calculations.js` | Date/time utilities, interval math, activity summaries                        |
+| `js/realtime-client.js`   | `RealtimeWatcher` — Supabase Realtime change signals (via supabase-js CDN)    |
+| `js/remote-changes.js`    | `RemoteChanges` — pure diff/summary of this device's day vs the cloud copy    |
 | `js/app.js`               | Legacy (unused, predates app-grid.js)                                         |
 | `js/api-client.js`        | Legacy Rails API client (unused)                                              |
 | `css/style.css`           | All styles — modals, grid, header, responsive breakpoints                     |
@@ -103,7 +115,8 @@ SELECT * FROM schema_migrations ORDER BY version;
 | 20261016100000 | create_schema_migrations     | applied |
 | 20261016100001 | auth_rls                     | applied |
 | 20261016100002 | revoke_anon_access           | applied |
-| 20261019000000 | delete_tasks_updated_at      | pending |
+| 20261019000000 | delete_tasks_updated_at      | applied |
+| 20261020000000 | enable_realtime              | applied |
 
 ## Backend (`backend/`)
 
@@ -123,6 +136,6 @@ GitHub Actions (brakeman, bundler-audit, rubocop).
 ## Conventions
 
 - **No build step** — vanilla JS, vanilla CSS, no npm
-- **No SDK** — custom REST client over Supabase PostgREST + GoTrue APIs
+- **No SDK for data** — custom REST client over Supabase PostgREST + GoTrue APIs. The one exception is Realtime: the pinned supabase-js UMD build is loaded from jsDelivr (with SRI) and used only by `RealtimeWatcher`. If it fails to load, the app works without live updates.
 - **Local-first** — writes hit localStorage immediately; network sync is async
 - **Manual migrations** — paste SQL in Supabase dashboard; self-tracking via `schema_migrations` table

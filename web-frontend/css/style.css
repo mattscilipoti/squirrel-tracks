@@ -642,6 +642,40 @@ header a:hover {
   padding-left: 20px;
 }
 
+.remote-notice {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 900;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 14px;
+  background: #fff8e1;
+  border: 1px solid #f0c36d;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  font-size: 0.9rem;
+}
+
+.remote-notice[hidden] {
+  display: none;
+}
+
+.remote-notice ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.remote-notice-dismiss {
+  border: none;
+  background: none;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
 /* Grid Section */
 .auto-center-status:not([hidden]) {
   display: flex;

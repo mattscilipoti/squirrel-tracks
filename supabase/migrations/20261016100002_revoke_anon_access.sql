@@ -2,7 +2,7 @@
 -- This is step 2 of 2. Only run after confirming sign-in works with the
 -- authenticated role (migration 20261016100001).
 -- After this, the anon API key alone cannot read or write any ETT data.
--- Executed at (datetime and timezone):
+-- Executed at (datetime and timezone): 2026/10/16
 
 begin;
 

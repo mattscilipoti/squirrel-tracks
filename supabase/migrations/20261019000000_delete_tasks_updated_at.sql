@@ -2,7 +2,7 @@
 -- and intervals cascade), and keep tasks.updated_at current when a task is edited.
 -- Run before using "Delete task" in the web app. Existing updated_at values are
 -- unchanged until the next edit.
--- Executed at (datetime and timezone):
+-- Executed at (datetime and timezone): 2026/10/16
 
 begin;
 

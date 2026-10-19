@@ -105,6 +105,18 @@ recorded dates. When it finishes, a message names the deleted task and its inter
 [`20261019000000_delete_tasks_updated_at.sql`](supabase/migrations/20261019000000_delete_tasks_updated_at.sql),
 which also makes a rename update the task's last-updated time.
 
+### Live updates from other tabs and devices
+
+When another tab or device changes the selected day (bubbles, tasks, renames,
+memo, or notes), this page updates itself and shows a notice listing what changed,
+for example `"Writing": +3 intervals` or `Renamed "A" to "B"`. The notice disappears
+after 20 seconds or when dismissed. If this device has edits that failed to reach
+Supabase, nothing is overwritten; the notice tells you to choose **Sync & Reload**
+(keep this device's data) or **Refresh from DB** (take the cloud's). Apply
+[`20261020000000_enable_realtime.sql`](supabase/migrations/20261020000000_enable_realtime.sql)
+first. Live updates need the page to load supabase-js from jsDelivr; without it
+the app works as before, just without live updates.
+
 Click a task name in the grid to edit it. Enter or leaving the field saves;
 Escape cancels. Blank names are rejected. Renaming changes the task's name across
 all days, preserving its ID and every day's bubbles. Removing a row detaches it

@@ -23,9 +23,12 @@ web-frontend/start-server.sh               # serve on :5000 (WEBrick via root Ge
 
 ## Architecture
 
-- Scripts load as classic `<script>` tags in order from `index.html`: `config.js` →
-  `supabase-client.js` → `time-calculations.js` → `app-grid.js`. They share top-level
+- Scripts load as classic `<script>` tags in order from `index.html`: the supabase-js
+  CDN build (Realtime only), `config.js`, `supabase-client.js`, `realtime-client.js`,
+  `remote-changes.js`, `time-calculations.js`, `app-grid.js`. They share top-level
   globals; when adding a cross-file global, also declare it in `eslint.config.mjs`.
+- Live updates: `RealtimeWatcher` only signals "something changed"; `app-grid.js`
+  re-reads the day and `RemoteChanges.diff` builds the notice. See `ARCHITECTURE.md`.
 - `app-grid.js` (`GridTaskTracker`) owns essentially all UI and state: a 96-slot
   (24h × 15 min) bubble grid per day, task catalog, date navigation, reminder bell,
   and sync. `app.js` and `api-client.js` are unused legacy files.

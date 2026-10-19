@@ -84,25 +84,46 @@
       >
         <h2 id="syncConflictTitle">Local and cloud data differ</h2>
         <p>
-          Upload local replaces this day's cloud data. Load cloud saves a local backup
-          first. Merge combines tasks and filled intervals; differing memo and notes are
-          asked separately. Cancel leaves both copies unchanged and pauses sync.
+          Merge combines tasks and filled intervals; differing memo and notes are asked
+          separately. Upload local replaces this day's cloud data. Load cloud saves a
+          local backup first. Cancel leaves both copies unchanged and pauses sync.
         </p>
         <div class="modal-buttons">
-          <button type="button" class="btn btn-primary" data-sync-choice="upload">
+          <button type="button" class="btn btn-primary" data-sync-choice="merge">
+            Merge
+          </button>
+          <button type="button" class="btn btn-secondary" data-sync-choice="upload">
             Upload local
           </button>
           <button type="button" class="btn btn-secondary" data-sync-choice="load">
             Load cloud
-          </button>
-          <button type="button" class="btn btn-secondary" data-sync-choice="merge">
-            Merge
           </button>
           <button type="button" class="btn btn-tertiary" data-sync-choice="cancel">
             Cancel
           </button>
         </div>
       </div>
+    </div>
+
+    <div
+      id="remoteChangeNotice"
+      class="remote-notice"
+      role="status"
+      aria-live="polite"
+      hidden
+    >
+      <div class="remote-notice-body">
+        <strong id="remoteChangeTitle"></strong>
+        <ul id="remoteChangeList"></ul>
+      </div>
+      <button
+        id="remoteChangeDismiss"
+        type="button"
+        class="remote-notice-dismiss"
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
     </div>
 
     <div class="container">
@@ -435,8 +456,15 @@
       </footer>
     </div>
 
+    <script
+      src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"
+      integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o"
+      crossorigin="anonymous"
+    ></script>
     <script src="js/config.js"></script>
     <script src="js/supabase-client.js"></script>
+    <script src="js/realtime-client.js"></script>
+    <script src="js/remote-changes.js"></script>
     <script src="js/time-calculations.js"></script>
     <script src="js/app-grid.js"></script>
     <script>
@@ -493,6 +521,7 @@
           new Promise((resolve) => {
             resolveSyncConflict = resolve;
             syncConflictModal.classList.remove("hidden");
+            syncConflictModal.querySelector('[data-sync-choice="merge"]').focus();
           });
         syncConflictModal.querySelectorAll("[data-sync-choice]").forEach((button) => {
           button.addEventListener("click", () => {

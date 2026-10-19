@@ -61,6 +61,8 @@ function fixture(date = "2026-10-14", options = {}) {
   const context = vm.createContext({
     console,
     clearInterval,
+    clearTimeout,
+    setTimeout,
     Date: FixedDate,
     window: {
       setTimeout() {},
@@ -79,7 +81,7 @@ function fixture(date = "2026-10-14", options = {}) {
       setItem: (key, value) => storage.set(key, value),
     },
   });
-  for (const file of ["time-calculations.js", "app-grid.js"]) {
+  for (const file of ["time-calculations.js", "remote-changes.js", "app-grid.js"]) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, file), "utf8"), context);
   }
   const tracker = vm.runInContext("Object.create(GridTaskTracker.prototype)", context);
@@ -1502,4 +1504,107 @@ test("picker buttons: tasks already on the day can be deleted but not added agai
   tracker.updatePickerButtons();
   assert.equal(elements.reuseTaskBtn.disabled, false);
   assert.equal(elements.deleteTaskBtn.disabled, false);
+});
+
+function remoteFixture() {
+  const setup = fixture("2026-10-15");
+  const { tracker, context } = setup;
+  tracker.sessionId = 15;
+  tracker.tasks = ["Task"];
+  tracker.taskIds = [5];
+  tracker.taskIdMap = { Task: 5 };
+  tracker.gridData = [[true]];
+  tracker.memo = "";
+  tracker.notes = "";
+  tracker.scheduleRemoteRefresh = () =>
+    (tracker.rescheduled = (tracker.rescheduled || 0) + 1);
+  tracker.updateSummary = () => {};
+  const notices = [];
+  tracker.showRemoteNotice = (title, lines) => notices.push({ title, lines });
+  tracker.loadSessionFromSupabase = async () => (tracker.loaded = true);
+  tracker.refreshTaskCatalog = async () => {};
+  setup.notices = notices;
+  setup.context = context;
+  return setup;
+}
+
+test("a remote change is applied and summarized", async () => {
+  const { tracker, notices } = remoteFixture();
+  tracker.db = {
+    getSession: async () => ({
+      id: 15,
+      memo: "",
+      notes: "",
+      tasks: [{ id: 5, name: "Task" }],
+    }),
+    getSessionIntervals: async () => [
+      { task_id: 5, interval_index: 0 },
+      { task_id: 5, interval_index: 1 },
+      { task_id: 5, interval_index: 2 },
+    ],
+  };
+  await tracker.refreshFromRemoteChange();
+  assert.equal(tracker.loaded, true);
+  assert.equal(notices[0].title, "Updated from another device");
+  assert.deepEqual([...notices[0].lines], ['"Task": +2 intervals']);
+});
+
+test("an echo of our own write changes nothing and shows no message", async () => {
+  const { tracker, notices } = remoteFixture();
+  tracker.db = {
+    getSession: async () => ({
+      id: 15,
+      memo: "",
+      notes: "",
+      tasks: [{ id: 5, name: "Task" }],
+    }),
+    getSessionIntervals: async () => [{ task_id: 5, interval_index: 0 }],
+  };
+  await tracker.refreshFromRemoteChange();
+  assert.equal(tracker.loaded, undefined);
+  assert.deepEqual(notices, []);
+});
+
+test("remote changes wait while local writes are pending", async () => {
+  const { tracker } = remoteFixture();
+  tracker.pendingWrites.add(Promise.resolve());
+  tracker.db = {
+    getSession: async () => assert.fail("Fetched while writes were pending"),
+    getSessionIntervals: async () => assert.fail("Fetched while writes were pending"),
+  };
+  await tracker.refreshFromRemoteChange();
+  assert.equal(tracker.rescheduled, 1);
+});
+
+test("local edits made during the fetch are not overwritten", async () => {
+  const { tracker, notices } = remoteFixture();
+  tracker.db = {
+    getSession: async () => {
+      tracker.gridData[0][3] = true;
+      return { id: 15, memo: "", notes: "", tasks: [{ id: 5, name: "Task" }] };
+    },
+    getSessionIntervals: async () => [],
+  };
+  await tracker.refreshFromRemoteChange();
+  assert.equal(tracker.loaded, undefined);
+  assert.deepEqual(notices, []);
+  assert.equal(tracker.rescheduled, 1);
+});
+
+test("unsynced local edits block applying remote changes and explain why", async () => {
+  const { tracker, notices } = remoteFixture();
+  tracker.cloudWriteFailed = true;
+  tracker.db = {
+    getSession: async () => ({
+      id: 15,
+      memo: "",
+      notes: "",
+      tasks: [{ id: 5, name: "Task" }],
+    }),
+    getSessionIntervals: async () => [],
+  };
+  await tracker.refreshFromRemoteChange();
+  assert.equal(tracker.loaded, undefined);
+  assert.equal(notices[0].title, "Changed on another device");
+  assert.match(notices[0].lines.join(" "), /Sync & Reload/);
 });

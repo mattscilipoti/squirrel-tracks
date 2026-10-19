@@ -215,6 +215,7 @@ class SupabaseClient {
   setAccessToken(token) {
     if (token) this.headers.Authorization = `Bearer ${token}`;
     else delete this.headers.Authorization;
+    this.onAccessTokenChange?.(token);
   }
 
   isAuthenticated() {

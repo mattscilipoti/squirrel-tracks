@@ -471,6 +471,7 @@ class GridTaskTracker {
     this.updateSummary();
     this.updateTimeCalculations();
     this.saveToLocalStorage();
+    this.cloudWriteFailed = false;
     this.recordSyncSuccess();
   }
 
@@ -569,6 +570,9 @@ class GridTaskTracker {
   initializeUI() {
     document.getElementById("existingTaskSelect").addEventListener("change", () => {
       this.updatePickerButtons();
+    });
+    document.getElementById("remoteChangeDismiss")?.addEventListener("click", () => {
+      document.getElementById("remoteChangeNotice").hidden = true;
     });
     document.getElementById("deleteTaskBtn").addEventListener("click", async () => {
       try {
@@ -1699,6 +1703,7 @@ class GridTaskTracker {
       );
     } catch (error) {
       console.error("Failed to sync interval to Supabase:", error);
+      this.cloudWriteFailed = true;
     }
   }
 
@@ -2182,10 +2187,146 @@ class GridTaskTracker {
       this.pendingInitialSyncAction = null;
       await this.syncAndReloadFromSupabase();
     }
+    this.startRealtime(accessToken);
     return true;
   }
 
+  startRealtime(accessToken) {
+    this.stopRealtime();
+    if (typeof RealtimeWatcher === "undefined") return;
+    const config = globalThis.SUPABASE_CONFIG || {};
+    this.realtime = new RealtimeWatcher(config.url, config.publishableKey, () =>
+      this.scheduleRemoteRefresh(),
+    );
+    if (!this.realtime.start(accessToken)) {
+      this.realtime = null;
+      return;
+    }
+    this.db.onAccessTokenChange = (token) => this.realtime?.setAccessToken(token);
+  }
+
+  stopRealtime() {
+    clearTimeout(this.remoteRefreshTimer);
+    this.realtime?.stop();
+    this.realtime = null;
+    if (this.db) this.db.onAccessTokenChange = null;
+  }
+
+  scheduleRemoteRefresh(delay = 700) {
+    clearTimeout(this.remoteRefreshTimer);
+    this.remoteRefreshTimer = setTimeout(() => this.refreshFromRemoteChange(), delay);
+  }
+
+  /** Comparable view of the selected day, ignoring tasks not yet in the cloud. */
+  remoteComparableState() {
+    this.ensureTaskIds();
+    return {
+      memo: this.memo || "",
+      notes: this.notes || "",
+      tasks: this.tasks.map((name, index) => ({
+        id: this.getTaskId(index),
+        name,
+        slots: (this.gridData[index] || [])
+          .slice(0, TimeCalculations.intervalCount)
+          .flatMap((filled, slot) => (filled ? [slot] : [])),
+      })),
+    };
+  }
+
+  /** A change signal arrived: fetch the day, summarize what differs, and apply it. */
+  async refreshFromRemoteChange() {
+    if (!this.isCloudReady() || !this.sessionId) return;
+    if (
+      this.isFullSyncing ||
+      this.isSyncing ||
+      this.isInitializingSession ||
+      this.pendingWrites.size > 0
+    ) {
+      this.scheduleRemoteRefresh(1000);
+      return;
+    }
+    if (this.remoteRefreshRunning) {
+      this.remoteRefreshAgain = true;
+      return;
+    }
+    this.remoteRefreshRunning = true;
+    const sessionId = this.sessionId;
+    try {
+      const before = this.remoteComparableState();
+      const [session, intervals] = await Promise.all([
+        this.db.getSession(sessionId),
+        this.db.getSessionIntervals(sessionId),
+      ]);
+      const changed =
+        this.sessionId !== sessionId ||
+        this.pendingWrites.size > 0 ||
+        JSON.stringify(before) !== JSON.stringify(this.remoteComparableState());
+      if (changed) {
+        // Local edits landed while fetching; compare again once they have synced.
+        this.remoteRefreshAgain = true;
+        return;
+      }
+      if (!session) return;
+      const changes = RemoteChanges.diff(before, {
+        memo: session.memo,
+        notes: session.notes,
+        tasks: session.tasks,
+        intervals,
+      });
+      if (changes.isEmpty) {
+        await this.refreshTaskCatalog();
+        this.updateSummary();
+        return;
+      }
+      if (this.cloudWriteFailed) {
+        this.showRemoteNotice("Changed on another device", [
+          "This device has edits that did not reach the cloud, so nothing was applied.",
+          "Use Sync & Reload to keep this device's version, or Refresh from DB to take the cloud's.",
+        ]);
+        return;
+      }
+      const memoInput = document.getElementById("memoInput");
+      const notesInput = document.getElementById("notesInput");
+      const typed = { memo: memoInput?.value, notes: notesInput?.value };
+      await this.loadSessionFromSupabase(session, this.date);
+      // Keep text being typed when the other device did not change that field.
+      if (!changes.memoChanged && memoInput) memoInput.value = typed.memo;
+      if (!changes.notesChanged && notesInput) notesInput.value = typed.notes;
+      this.showRemoteNotice(
+        "Updated from another device",
+        RemoteChanges.describe(changes),
+      );
+    } catch (error) {
+      console.error("Failed to apply remote changes:", error);
+    } finally {
+      this.remoteRefreshRunning = false;
+      if (this.remoteRefreshAgain) {
+        this.remoteRefreshAgain = false;
+        this.scheduleRemoteRefresh(300);
+      }
+    }
+  }
+
+  showRemoteNotice(title, lines, maxLines = 6) {
+    const notice = document.getElementById("remoteChangeNotice");
+    if (!notice) return;
+    document.getElementById("remoteChangeTitle").textContent = title;
+    const list = document.getElementById("remoteChangeList");
+    list.replaceChildren();
+    const shown = lines.slice(0, maxLines);
+    if (lines.length > maxLines) shown.push(`\u2026and ${lines.length - maxLines} more`);
+    for (const line of shown) {
+      const item = document.createElement("li");
+      item.textContent = line;
+      list.appendChild(item);
+    }
+    notice.hidden = false;
+    clearTimeout(this.remoteNoticeTimer);
+    this.remoteNoticeTimer = setTimeout(() => (notice.hidden = true), 20000);
+  }
+
   disableSupabase() {
+    this.stopRealtime();
     this.cloudAuthenticated = false;
     this.syncPausedForConflict = false;
     this.db = null;
