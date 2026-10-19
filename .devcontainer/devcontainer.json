@@ -13,7 +13,8 @@
 
   "containerEnv": {
     "RAILS_ENV": "development",
-    "BUNDLE_PATH": "${containerWorkspaceFolder}/bundle"
+    "BUNDLE_PATH": "${containerWorkspaceFolder}/bundle",
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
   },
 
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
@@ -51,6 +52,7 @@
           "**/.git": true
         },
         "terminal.integrated.defaultProfile.linux": "bash",
+        "task.allowAutomaticTasks": "on",
         "ruby.lsp.nesting": true,
         "ruby.lsp.rubyVersionManager": "rbenv"
       },
@@ -64,7 +66,8 @@
         "ms-vscode-remote.remote-ssh",
         "sumneko.lua",
         "GitHub.Copilot",
-        "EditorConfig.EditorConfig"
+        "EditorConfig.EditorConfig",
+        "anthropic.claude-code"
       ]
     }
   },
@@ -73,7 +76,10 @@
 
   "postStartCommand": "bash -c 'echo && echo \"✅ Squirrel Tracks Dev Environment Ready!\" && echo && echo \"Navigate to components:\" && echo \"  cd backend    (Rails API)\" && echo \"  cd web-frontend (Web app)\" && echo \"  cd ios-app    (iOS project)\" && echo'",
 
-  "mounts": ["source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly"],
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,readonly",
+    "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+  ],
 
   "forwardPorts": [3000, 5000],
 

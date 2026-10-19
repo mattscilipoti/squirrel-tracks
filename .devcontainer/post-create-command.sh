@@ -15,6 +15,9 @@ WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$WORKSPACE_DIR"
 
 echo -e "${BLUE}🤖 Installing Claude Code...${NC}"
+# Claude config lives on a persistent volume (see devcontainer.json mounts);
+# a fresh volume is created root-owned, so hand it to the dev user.
+sudo chown -R "$(id -u):$(id -g)" "$HOME/.claude"
 # Optional tool: warn instead of aborting setup if the install fails.
 if [[ -x "$HOME/.local/bin/claude" ]] || curl -fsSL https://claude.ai/install.sh | bash; then
 	echo -e "${GREEN}✅ Claude Code ready${NC}"

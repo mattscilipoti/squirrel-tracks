@@ -28,7 +28,7 @@ This is a digital version of that [Emergent Task Timing](https://davidseah.com/2
 ### 1. Verify Prerequisites
 
 ```bash
-cd /home/matt/develop/clients/GreatEnough/ett
+cd /workspaces/squirrel_tracks
 ./verify-env.sh
 ```
 
@@ -191,7 +191,7 @@ All tools are **FREE**:
 - ✅ PostgreSQL (open-source)
 - ✅ SwiftUI (included in Xcode)
 - ✅ Realm (open-source database)
-- ✅ Vanilla JavaScript (no npm dependencies)
+- ✅ Vanilla JavaScript (no runtime dependencies; npm is used only for dev tooling: ESLint, Prettier)
 
 **Local development**: $0/month  
 **Deployed (optional)**: ~$5/month on Railway or Render
@@ -279,7 +279,7 @@ All tools are **FREE**:
 ## ❓ FAQ
 
 **Q: Why not use Next.js or React for the web?**  
-A: Cost + simplicity. No build tools, no npm, no deployment complexity. Vanilla JS is fast enough for a timer app.
+A: Cost + simplicity. No build step and no runtime dependencies (npm is used only for linting and formatting). Vanilla JS is fast enough for a timer app.
 
 **Q: Why not cross-platform (Flutter/React Native)?**  
 A: Native iOS (SwiftUI) is faster to develop and deploy for initial launch. Android can be added in Phase 4.
