@@ -143,25 +143,15 @@ ruby -run -ehttpd . -p5000
 - Open http://localhost:5000 in browser
 - Timer displays "15:00"
 - All buttons functional
-- localStorage persists data (open DevTools → Application → Local Storage)
+- Data persists across reloads (DevTools → Application → IndexedDB → squirrel-tracks)
 
-When following today, sessions roll over on a new local day, at startup, on the
-minute refresh, or when returning to the tab. Active writes and syncs finish
-before rollover. Previous cloud sessions remain unchanged; local snapshots are
-retained in `ettGridHistory` in browser localStorage. The Date picker explicitly
-loads a selected day's local snapshot or cloud session. Past/future selections
-remain pinned across minute updates and reloads, with an amber field and a
-"Not today" warning. Today returns to the current day and re-enables rollover.
-Local history is browser-specific and clearing site data removes it. Per-day
-snapshots preserve task ID mappings, bubbles, memo, and notes. The reminder is
-independent of the selected date.
-
-Startup checks Supabase for sessions matching the local session date before
-creating a new one. A populated current session is preferred; an empty or missing
-local session pointer can recover the selected date's newest populated cloud session instead
-of displaying an empty duplicate. Conflicting nonempty local task data is kept
-until the user confirms Refresh from DB. Failed cloud reads leave local data
-intact and do not create replacement sessions.
+When following today, the app switches to the new local day at startup, on the
+minute refresh, or when returning to the tab. Data is stored in a Yjs document in
+IndexedDB (see ARCHITECTURE.md), so every day stays saved. The Date picker selects
+any day. Past/future selections remain pinned across minute updates and reloads,
+with an amber field and a "Not today" warning. Today returns to the current day and
+re-enables rollover. The reminder is independent of the selected date. Data is
+per browser and per address; clearing site data removes it, so use Back up.
 
 The grid covers midnight to midnight in 96 quarter-hour slots. Current time is
 automatically centered in the scrollable area beside the sticky task names.
@@ -177,26 +167,13 @@ gaps between those boundaries. Tracked Time sums task bubbles directly without
 overlap compensation. Empty activity summaries show `--`. Current Slot follows the local
 clock from slot 1 at midnight to slot 96 at 23:45, independently of activity.
 Current Slot and the current-time line are hidden when viewing another date.
-The existing saved `start_time` field now reflects First Activity, and CSV
-metadata includes all four activity summaries. No schema migration is needed
-for this header change.
+The saved start time reflects First Activity, and CSV
+metadata includes all four activity summaries.
 
-Reusable tasks require `20261016000000_reusable_tasks.sql`. Global tasks are linked
-to sessions through `session_tasks`; intervals reference that membership. Day
-removal cascades only that day's intervals, and anonymous clients cannot delete
-the global task. `task_totals` and `task_day_totals` are security-invoker views.
-The browser keeps row IDs separately from display names, preserving duplicate
-names already present in the database as distinct tasks. New names are checked
-case-insensitively and the database trigger rejects concurrent duplicates.
-Catalog and day counts are paginated; all-days totals combine other sessions
-with live selected-day edits and local snapshots.
-Renaming updates the global task and cached appearances by ID. No name-based
-merge or duplicate-management UI is provided.
-
-Apply `20261016000001_prevent_duplicate_task_names.sql` afterward to reject new
-case-insensitive duplicate names in Supabase. Existing duplicate IDs are kept
-separate and visible as distinct ID-labelled choices for reuse; clean them up
-only through a separate admin workflow.
+Tasks are reusable across days. Each task has a UUID, and a day links to the tasks it
+shows. Names are checked case-insensitively after trimming. If two devices create the
+same name while apart, merging joins them into one task (the lowest UUID survives).
+Renaming updates the task by ID, so every day shows the new name.
 
 ### JavaScript Tests
 
@@ -206,11 +183,11 @@ From the repository root, run:
 node --test web-frontend/js/*.test.cjs
 ```
 
-Requires Node.js 18 or newer; no npm dependencies are needed. Tests supply explicit
+Requires Node.js 18 or newer. `npm install` provides `yjs`, which the tests use as a real in-memory store. Tests supply explicit
 dates and times to the calculation helpers without a browser or a mocked clock.
 Coverage includes local-date formatting, clock-based slots, activity boundaries,
 and current-time line positions in Eastern, UTC, and India timezones. Session
-tests cover daily rollover, local archival, same-day reuse, and active-write guards.
+tests cover daily rollover, same-day reuse, and edits from other devices; store tests cover merging of concurrent edits.
 Additional tests cover centering geometry, pause countdowns, resume behavior,
 legacy grid conversion, and late-night intervals.
 Reusable-task tests cover cross-day IDs, independent day links, name uniqueness,

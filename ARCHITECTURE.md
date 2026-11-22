@@ -1,147 +1,117 @@
 # Architecture
 
 Squirrel Tracks is a time-tracking web app based on David Seah's Emergent Task
-Timing. The vanilla JS frontend stores state locally and can optionally sync to
-Supabase via REST — no framework, no build step, no backend server in the request
-path.
+Timing. It is **local-first**: the vanilla JS frontend keeps all data on the device in
+a Yjs document stored in IndexedDB. There is no backend, no account and no cloud
+service. No framework, no build step for the app itself.
 
 ## Data flow
 
 ```
 Browser (vanilla JS)
-  → localStorage (immediate, offline-first)
-  → authenticated Supabase PostgREST API (when configured and online)
-  → PostgreSQL (RLS enforced, authenticated role)
+  → GridTaskTracker (in-memory copy of the selected day, rendering, UI)
+  → DataStore (the only code that touches Yjs)
+  → Y.Doc  ⇄  IndexedDB ("squirrel-tracks", via y-indexeddb)
 ```
 
-Without a valid `js/config.js`, the app remains local-only and does not require
-sign-in. The file contains the public Supabase URL and publishable key. When
-configured, the key is sent in `apikey`; only the user's access token is sent in
-`Authorization: Bearer`. Auth uses Supabase GoTrue REST API (email/password),
-stores project-scoped sessions in localStorage, and refreshes tokens before
-expiry. If local and cloud state differ on connection, the user chooses whether
-to upload, load, merge, or cancel.
+Every edit is written to the Y.Doc immediately and persisted by y-indexeddb. Each
+browser and address (for example `localhost:5000` and the GitHub Pages site) has its
+own copy. Copies are combined by exporting a backup (`Y.encodeStateAsUpdate`) and
+importing it elsewhere; importing merges, it never overwrites. Device-to-device sync
+over WebRTC (`y-webrtc`, with an optional always-on relay) is planned but not built.
 
-### Live updates
+### Why Yjs
 
-`RealtimeWatcher` subscribes to changes on `sessions`, `tasks`, `session_tasks`, and
-`intervals`. Events are only a signal (RLS limits what DELETE events carry). After a
-short debounce and once local writes have settled, `GridTaskTracker.refreshFromRemoteChange`
-re-reads the selected day, diffs it against local state with `RemoteChanges.diff`,
-applies any differences, and shows a summary notice. Own writes produce an empty diff and
-no message.
+Yjs is a CRDT: two copies that have each been edited converge to the same data
+after exchanging updates, in any order, with no conflict prompts. That is what makes
+"merge, never overwrite" safe.
 
-Problems the app cannot resolve (a failed write sets `cloudWriteFailed`; a missing
-session is detected by a change signal or by the 30-second session update matching no
-rows) go through `reportSyncProblem`: a sticky "Sync problem" notice that stays until
-`loadSessionFromSupabase` succeeds. While `cloudWriteFailed` is set, remote changes are not
-applied. The notice points to the Advanced buttons: Sync & Reload (keep this device;
-recreates a deleted session) or Refresh from DB (take the cloud's copy).
+### Data model (`web-frontend/js/store.js`)
+
+All collections are **flat** `Y.Map`s keyed by composite strings. Nested shared types
+are avoided on purpose: if two devices each create the same nested map, one is
+dropped along with its contents.
+
+| Map          | Key                  | Value                         | Meaning                         |
+| ------------ | -------------------- | ----------------------------- | ------------------------------- |
+| `taskNames`  | `taskId`             | JSON text `{name, createdAt}` | A task (UUID from `randomUUID`) |
+| `tombstones` | `taskId`             | `true`                        | The task was deleted            |
+| `dayTasks`   | `date\|taskId`       | order number                  | The task appears on that day    |
+| `cells`      | `date\|taskId\|slot` | `true`                        | A filled bubble (slot 0-95)     |
+| `dayFields`  | `date\|field`        | string                        | `memo`, `notes`, `startTime`    |
+
+Merge rules:
+
+- Clearing a bubble deletes its key; concurrent fills and clears resolve per bubble.
+- Deleting a task writes a tombstone instead of removing data. Its bubbles stay in the
+  document but are never read.
+- Renames and text fields are last-writer-wins.
+- If two live tasks end up with the same trimmed, lower-cased name (two devices created
+  "Email" while apart), `dedupeTasks` keeps the lowest id, moves the other task's days and
+  bubbles onto it and tombstones the rest. Every device picks the same survivor.
+- `onRemoteChange` fires only for updates that did not come from a local edit.
+
+### Per-device settings (localStorage)
+
+Not shared between devices: the selected date and "follow today" (`ettDeviceState`),
+the reminder interval, bell and volume (`ettReminderSettings`).
+
+### Startup
+
+`index.html` opens the Y.Doc and IndexedDB persistence (loaded from the vendored
+`vendor/yjs.js`), builds a `DataStore`, runs `dedupeTasks`, and on an empty store
+imports the pre-Yjs localStorage keys (`ettGridState`, `ettGridHistory`; left in place
+as a backup). It then fires `app-store-ready`, and `app-grid.js` creates the tracker.
+It also asks the browser for persistent storage so data is not evicted under pressure.
+
+### Changes arriving from elsewhere
+
+`DataStore.onRemoteChange` → `GridTaskTracker.refreshFromRemoteChange` re-reads the
+selected day, `RemoteChanges.diff` compares it with what is on screen, and a notice
+summarizes the differences. Text being typed in memo/notes is kept unless the other
+device changed the same field.
 
 ## Web frontend (`web-frontend/`)
 
-No build step. Serve with any static HTTP server (`python3 -m http.server 5000`).
+No build step. Serve with any static HTTP server (`web-frontend/start-server.sh`).
 
-| File                      | Purpose                                                                       |
-| ------------------------- | ----------------------------------------------------------------------------- |
-| `index.html`              | Entry point, optional login and sync-conflict dialogs, boot sequence          |
-| `js/config.js`            | Public Supabase project URL and publishable key; optional for local-only mode |
-| `js/supabase-client.js`   | Custom Supabase REST client + `SupabaseAuth` class                            |
-| `js/app-grid.js`          | `GridTaskTracker` — main app: grid, tasks, sync, UI                           |
-| `js/time-calculations.js` | Date/time utilities, interval math, activity summaries                        |
-| `js/realtime-client.js`   | `RealtimeWatcher` — Supabase Realtime change signals (via supabase-js CDN)    |
-| `js/remote-changes.js`    | `RemoteChanges` — pure diff/summary of this device's day vs the cloud copy    |
-| `js/app.js`               | Legacy (unused, predates app-grid.js)                                         |
-| `js/api-client.js`        | Legacy Rails API client (unused)                                              |
-| `css/style.css`           | All styles — modals, grid, header, responsive breakpoints                     |
-
-### Key classes
-
-- **`SupabaseAuth`** (`supabase-client.js`) — sign-in, sign-up, token refresh,
-  session persistence scoped by project URL in localStorage
-- **`SupabaseClient`** (`supabase-client.js`) — REST wrapper for PostgREST;
-  CRUD for sessions, tasks, intervals, session_tasks; sends publishable key as
-  `apikey` and a user JWT as the optional Bearer token
-- **`GridTaskTracker`** (`app-grid.js`) — owns all UI state; 96-slot grid
-  (24h x 15min); local-first writes to localStorage, auth-gated Supabase sync,
-  date navigation, task catalog, reminder timer
+| File                      | Purpose                                                             |
+| ------------------------- | ------------------------------------------------------------------- |
+| `index.html`              | Entry point, delete-task dialog, module script that opens the store |
+| `js/store.js`             | `DataStore` - the Yjs data layer, merging, import/export            |
+| `js/app-grid.js`          | `GridTaskTracker` - grid, tasks, dates, reminder, backup/import UI  |
+| `js/time-calculations.js` | Date/time utilities, interval math, activity summaries              |
+| `js/remote-changes.js`    | `RemoteChanges` - pure diff/summary of the screen vs the store      |
+| `js/version.js`           | Build stamp (overwritten by the deploy workflow)                    |
+| `vendor/yjs.js`           | Bundled Yjs + y-indexeddb. Generated: `npm run vendor`, then commit |
+| `vendor-src/entry.js`     | Input for the vendor bundle                                         |
+| `css/style.css`           | All styles                                                          |
 
 ### Tests
 
 ```bash
-node --test web-frontend/js/*.test.cjs
+npm test      # node --test web-frontend/js/*.test.cjs
 ```
 
-Node 18+, no npm dependencies. Covers time calculations, grid logic, session
-rollover, reusable task behavior.
+Node 18+. `yjs` is a dev dependency so the tests run against a real in-memory
+`Y.Doc`. App tests load the browser scripts into a `vm` context with hand-built DOM
+fakes; no jsdom.
 
-## Database (Supabase / PostgreSQL)
+## Supabase (retired)
 
-### Tables
+Earlier versions synced through Supabase (Postgres, Auth, Realtime). That code is
+removed. `supabase/migrations/` is kept only as a record of the old schema, and
+`supabase/export-days.sql` exports the old data as JSON for **Advanced → Import**
+(`DataStore.importSupabaseExport`).
 
-| Table               | Key columns                                | Notes                                     |
-| ------------------- | ------------------------------------------ | ----------------------------------------- |
-| `sessions`          | id, status, date, memo, notes              | One per day                               |
-| `tasks`             | id, name, created_at, updated_at           | Reusable across days (no session FK); `updated_at` maintained by trigger |
-| `session_tasks`     | session_id, task_id                        | Junction: which tasks appear on which day |
-| `intervals`         | session_id, task_id, interval_index (0-95) | Filled bubbles                            |
-| `schema_migrations` | version, name, applied_at                  | Migration tracking                        |
+## Backend (`backend/`) and other directories
 
-### Views
-
-- `task_totals` — all-time interval count per task
-- `task_day_totals` — per-session interval count per task
-
-Both are `security_invoker = true` so RLS applies.
-
-### Auth / RLS
-
-All access requires the `authenticated` role (Supabase email/password sign-in).
-Anonymous access is revoked. RLS policies are permissive (`using (true)`) — any
-authenticated user sees all rows. Suitable for single-user; add `user_id`
-columns for multi-user isolation later.
-
-## Migrations (`supabase/migrations/`)
-
-Applied manually via Supabase SQL editor. Each migration inserts into
-`schema_migrations` to track execution. Query applied state with:
-
-```sql
-SELECT * FROM schema_migrations ORDER BY version;
-```
-
-| Version        | Name                         | Status  |
-| -------------- | ---------------------------- | ------- |
-| 20261014000000 | create_ett_tables            | applied |
-| 20261014000001 | restrict_anon_permissions    | applied |
-| 20261015000000 | expand_daily_grid            | applied |
-| 20261015000001 | allow_task_name_updates      | applied |
-| 20261016000000 | reusable_tasks               | applied |
-| 20261016000001 | prevent_duplicate_task_names | applied |
-| 20261016100000 | create_schema_migrations     | applied |
-| 20261016100001 | auth_rls                     | applied |
-| 20261016100002 | revoke_anon_access           | applied |
-| 20261019000000 | delete_tasks_updated_at      | applied |
-| 20261020000000 | enable_realtime              | applied |
-
-## Backend (`backend/`)
-
-Rails 7+ API-only app. **Not in the active request path** — the frontend
-switched to Supabase directly. Kept for reference. Has RSpec tests, CI via
-GitHub Actions (brakeman, bundler-audit, rubocop).
-
-## Other directories
-
-| Path             | Contents                                                  |
-| ---------------- | --------------------------------------------------------- |
-| `ios-app/`       | Placeholder SwiftUI + Realm iOS app (CocoaPods, Fastlane) |
-| `bundle/`        | Packaging artifacts                                       |
-| `assets/`        | Static assets                                             |
-| `.devcontainer/` | VS Code dev container config                              |
+`backend/` is an unused Rails API from the original plan. `ios-app/` is a placeholder
+SwiftUI app. `.devcontainer/`, `bundle/` and `assets/` are tooling and static files.
 
 ## Conventions
 
-- **No build step** — vanilla JS, vanilla CSS, no npm
-- **No SDK for data** — custom REST client over Supabase PostgREST + GoTrue APIs. The one exception is Realtime: the pinned supabase-js UMD build is loaded from jsDelivr (with SRI) and used only by `RealtimeWatcher`. If it fails to load, the app works without live updates.
-- **Local-first** — writes hit localStorage immediately; network sync is async
-- **Manual migrations** — paste SQL in Supabase dashboard; self-tracking via `schema_migrations` table
+- **No build step for the app** - vanilla JS and CSS. The one generated file is the
+  vendored Yjs bundle.
+- **Local-first** - every write hits the local store first; nothing needs a network.
+- **Flat CRDT maps** - never nest shared types (see data model).
