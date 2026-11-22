@@ -332,6 +332,8 @@ class DataStore {
    * Several sessions on one date merge. Returns the number of sessions imported.
    */
   importSupabaseExport(rows) {
+    // The dashboard's "Download JSON" wraps the cell in a row: [{ "export": [...] }].
+    if (Array.isArray(rows) && Array.isArray(rows[0]?.export)) rows = rows[0].export;
     if (!Array.isArray(rows)) throw new Error("Expected a JSON array of days.");
     let imported = 0;
     for (const row of rows) {

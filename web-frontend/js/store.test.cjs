@@ -193,3 +193,10 @@ test("lists a task's intervals and clears a day", () => {
   assert.equal(store.readDay("2026-11-22").gridData[0].some(Boolean), false);
   assert.equal(store.readDay("2026-11-21").gridData[0][1], true);
 });
+
+test("accepts the Supabase dashboard's wrapped JSON download", () => {
+  const store = device("a");
+  const day = { date: "2026-10-13", tasks: [{ name: "task 1", intervals: [40] }] };
+  assert.equal(store.importSupabaseExport([{ export: [day] }]), 1);
+  assert.deepEqual(store.readDay("2026-10-13").tasks, ["task 1"]);
+});
