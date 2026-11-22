@@ -7,50 +7,6 @@
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <!-- Login Modal -->
-    <div id="loginModal" class="modal hidden">
-      <div class="modal-content">
-        <h2 id="loginModalTitle">Sign In</h2>
-        <p id="loginModalSubtitle">Sign in to access your data.</p>
-        <p id="loginError" class="setup-error" role="alert" hidden></p>
-        <p id="loginSuccess" class="setup-success" role="status" hidden></p>
-        <form id="loginForm">
-          <label>
-            Email:
-            <input
-              type="email"
-              id="loginEmailInput"
-              placeholder="you@example.com"
-              required
-              autocomplete="email"
-            />
-          </label>
-          <label>
-            Password:
-            <input
-              type="password"
-              id="loginPasswordInput"
-              placeholder="Password"
-              required
-              minlength="6"
-              autocomplete="current-password"
-            />
-          </label>
-          <div class="modal-buttons">
-            <button type="submit" id="loginSubmitBtn" class="btn btn-primary">
-              Sign In
-            </button>
-            <button type="button" id="continueOfflineBtn" class="btn btn-secondary">
-              Continue offline
-            </button>
-          </div>
-        </form>
-        <p class="help-text">
-          <a href="#" id="loginToggleLink">Need an account? Sign up</a>
-        </p>
-      </div>
-    </div>
-
     <div id="deleteTaskModal" class="modal hidden">
       <div
         class="modal-content"
@@ -69,36 +25,6 @@
             Delete task
           </button>
           <button type="button" class="btn btn-tertiary" data-delete-choice="cancel">
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div id="syncConflictModal" class="modal hidden">
-      <div
-        class="modal-content"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="syncConflictTitle"
-      >
-        <h2 id="syncConflictTitle">Local and cloud data differ</h2>
-        <p>
-          Merge combines tasks and filled intervals; differing memo and notes are asked
-          separately. Upload local replaces this day's cloud data. Load cloud saves a
-          local backup first. Cancel leaves both copies unchanged and pauses sync.
-        </p>
-        <div class="modal-buttons">
-          <button type="button" class="btn btn-primary" data-sync-choice="merge">
-            Merge
-          </button>
-          <button type="button" class="btn btn-secondary" data-sync-choice="upload">
-            Upload local
-          </button>
-          <button type="button" class="btn btn-secondary" data-sync-choice="load">
-            Load cloud
-          </button>
-          <button type="button" class="btn btn-tertiary" data-sync-choice="cancel">
             Cancel
           </button>
         </div>
@@ -265,9 +191,7 @@
             Enable bell audio
           </button>
           <details class="advanced-actions">
-            <summary
-              title="Show cloud synchronization, grid clearing, export, and sign-out actions"
-            >
+            <summary title="Show grid clearing, export, backup, and import actions">
               Advanced
             </summary>
             <div
@@ -279,23 +203,9 @@
                 <button
                   id="clearGridBtn"
                   class="btn btn-tertiary"
-                  title="Clear this session's bubbles after confirmation; keep tasks and notes. Use Sync &amp; Reload to save the cleared grid to Supabase."
+                  title="Clear this day's bubbles after confirmation; keep tasks and notes."
                 >
                   Clear Grid
-                </button>
-                <button
-                  id="syncReloadBtn"
-                  class="btn btn-secondary"
-                  title="Save this grid, tasks, and notes to Supabase, then reload the saved session. Requires a Supabase connection."
-                >
-                  Sync &amp; Reload
-                </button>
-                <button
-                  id="refreshDbBtn"
-                  class="btn btn-secondary"
-                  title="Load the selected day's session from Supabase without uploading local changes. Confirmation is required before replacing local tasks, bubbles, memo, and notes."
-                >
-                  Refresh from DB
                 </button>
               </div>
               <div class="export-actions">
@@ -307,27 +217,26 @@
                 >
                   Export CSV
                 </button>
-              </div>
-              <div id="accountActions" class="account-actions" hidden>
-                <span class="action-separator" aria-hidden="true">|</span>
                 <button
-                  id="signInBtn"
+                  id="exportBackupBtn"
                   class="btn btn-secondary"
-                  type="button"
-                  hidden
-                  title="Sign in to sync this browser with Supabase"
+                  title="Download a backup of all days and tasks. Importing it on another device merges the two."
                 >
-                  Sign in to sync
+                  Back up
                 </button>
                 <button
-                  id="signOutBtn"
+                  id="importBtn"
                   class="btn btn-secondary"
-                  type="button"
-                  hidden
-                  title="Sign out of your account"
+                  title="Merge a backup file (.ettbackup) or a Supabase export (.json) into this device's data."
                 >
-                  Sign out
+                  Import
                 </button>
+                <input
+                  id="importFileInput"
+                  type="file"
+                  accept=".ettbackup,.json"
+                  hidden
+                />
               </div>
             </div>
           </details>
@@ -457,20 +366,26 @@
       </footer>
     </div>
 
-    <script
-      src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"
-      integrity="sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o"
-      crossorigin="anonymous"
-    ></script>
     <script src="js/version.js"></script>
-    <script src="js/config.js"></script>
-    <script src="js/supabase-client.js"></script>
-    <script src="js/realtime-client.js"></script>
     <script src="js/remote-changes.js"></script>
     <script src="js/time-calculations.js"></script>
+    <script src="js/store.js"></script>
     <script src="js/app-grid.js"></script>
+    <script type="module">
+      // Open the local database, then tell app-grid.js to start.
+      import { Y, IndexeddbPersistence } from "./vendor/yjs.js";
+      const doc = new Y.Doc();
+      const persistence = new IndexeddbPersistence("squirrel-tracks", doc);
+      await persistence.whenSynced;
+      const store = new DataStore(Y, doc);
+      store.dedupeTasks();
+      // First run after the move off localStorage: bring the old data across.
+      if (store.isEmpty()) store.importLegacyStorage(localStorage);
+      // Ask the browser not to evict our data under storage pressure.
+      navigator.storage?.persist?.();
+      window.dispatchEvent(new CustomEvent("app-store-ready", { detail: { store } }));
+    </script>
     <script>
-      // ── Optional Supabase auth flow ────────────────────────────────
       document.addEventListener("DOMContentLoaded", () => {
         // ── Build version in the footer ─────────────────────────────
         const version = window.APP_VERSION;
@@ -489,67 +404,6 @@
           }
         }
 
-        // ── Login modal elements ────────────────────────────────────
-        const loginModal = document.getElementById("loginModal");
-        const loginForm = document.getElementById("loginForm");
-        const loginEmail = document.getElementById("loginEmailInput");
-        const loginPassword = document.getElementById("loginPasswordInput");
-        const loginSubmitBtn = document.getElementById("loginSubmitBtn");
-        const loginError = document.getElementById("loginError");
-        const loginSuccess = document.getElementById("loginSuccess");
-        const loginToggle = document.getElementById("loginToggleLink");
-        const loginTitle = document.getElementById("loginModalTitle");
-        const loginSubtitle = document.getElementById("loginModalSubtitle");
-        const continueOfflineBtn = document.getElementById("continueOfflineBtn");
-        const signInBtn = document.getElementById("signInBtn");
-        const signOutBtn = document.getElementById("signOutBtn");
-        const accountActions = document.getElementById("accountActions");
-        const syncConflictModal = document.getElementById("syncConflictModal");
-        let resolveSyncConflict;
-
-        let isSignUp = false;
-
-        // ── Helpers ─────────────────────────────────────────────────
-
-        function showLogin() {
-          loginError.hidden = true;
-          loginSuccess.hidden = true;
-          loginModal.classList.remove("hidden");
-        }
-
-        function hideLogin() {
-          loginModal.classList.add("hidden");
-        }
-
-        /** Called after successful auth to boot cloud sync. */
-        async function bootApp(session) {
-          initSupabaseClient(
-            SUPABASE_URL,
-            SUPABASE_PUBLISHABLE_KEY,
-            session.access_token,
-          );
-          accountActions.hidden = false;
-          signInBtn.hidden = true;
-          signOutBtn.hidden = false;
-          if (window.tracker) {
-            await window.tracker.setupSupabase(session.access_token);
-          }
-        }
-
-        window.chooseSyncConflict = () =>
-          new Promise((resolve) => {
-            resolveSyncConflict = resolve;
-            syncConflictModal.classList.remove("hidden");
-            syncConflictModal.querySelector('[data-sync-choice="merge"]').focus();
-          });
-        syncConflictModal.querySelectorAll("[data-sync-choice]").forEach((button) => {
-          button.addEventListener("click", () => {
-            syncConflictModal.classList.add("hidden");
-            resolveSyncConflict?.(button.dataset.syncChoice);
-            resolveSyncConflict = null;
-          });
-        });
-
         const deleteTaskModal = document.getElementById("deleteTaskModal");
         let resolveDeleteTask;
         window.chooseDeleteTask = (render) =>
@@ -564,106 +418,6 @@
             resolveDeleteTask?.(button.dataset.deleteChoice === "delete");
             resolveDeleteTask = null;
           });
-        });
-
-        signInBtn.addEventListener("click", showLogin);
-        continueOfflineBtn.addEventListener("click", hideLogin);
-
-        // ── Toggle sign-in / sign-up ────────────────────────────────
-        loginToggle.addEventListener("click", (e) => {
-          e.preventDefault();
-          isSignUp = !isSignUp;
-          loginTitle.textContent = isSignUp ? "Create Account" : "Sign In";
-          loginSubtitle.textContent = isSignUp
-            ? "Create a new account."
-            : "Sign in to access your data.";
-          loginSubmitBtn.textContent = isSignUp ? "Create Account" : "Sign In";
-          loginToggle.textContent = isSignUp
-            ? "Already have an account? Sign in"
-            : "Need an account? Sign up";
-          loginPassword.autocomplete = isSignUp ? "new-password" : "current-password";
-          loginError.hidden = true;
-          loginSuccess.hidden = true;
-        });
-
-        // ── Login form submit ───────────────────────────────────────
-        loginForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          const email = loginEmail.value.trim();
-          const password = loginPassword.value;
-          if (!email || !password) return;
-
-          loginError.hidden = true;
-          loginSuccess.hidden = true;
-          loginSubmitBtn.disabled = true;
-          loginSubmitBtn.textContent = isSignUp ? "Creating account..." : "Signing in...";
-
-          try {
-            const auth = getSupabaseAuth();
-            let session;
-            if (isSignUp) {
-              session = await auth.signUp(email, password);
-              if (!session.access_token) {
-                // Email confirmation is enabled; account created but can't
-                // log in until confirmed.
-                loginSuccess.textContent =
-                  "Account created! Check your email to confirm, then sign in.";
-                loginSuccess.hidden = false;
-                loginSubmitBtn.disabled = false;
-                loginSubmitBtn.textContent = "Create Account";
-                return;
-              }
-            } else {
-              session = await auth.signIn(email, password);
-            }
-            hideLogin();
-            await bootApp(session);
-          } catch (err) {
-            loginError.textContent = err.message;
-            loginError.hidden = false;
-          } finally {
-            loginSubmitBtn.disabled = false;
-            loginSubmitBtn.textContent = isSignUp ? "Create Account" : "Sign In";
-          }
-        });
-
-        // ── Sign out ────────────────────────────────────────────────
-        signOutBtn.addEventListener("click", async () => {
-          const auth = getSupabaseAuth();
-          if (auth) await auth.signOut();
-          window.tracker?.disableSupabase();
-          supabaseClient = null;
-          accountActions.hidden = !hasSupabaseConfig();
-          signInBtn.hidden = false;
-          signOutBtn.hidden = true;
-          hideLogin();
-        });
-
-        // ── Boot sequence ───────────────────────────────────────────
-        (async () => {
-          if (!hasSupabaseConfig()) return;
-          accountActions.hidden = false;
-          signInBtn.hidden = false;
-
-          // Supabase is configured — try to restore auth session.
-          const auth = getSupabaseAuth();
-          const session = await auth.restoreSession();
-          if (session) {
-            hideLogin();
-            await bootApp(session);
-          } else {
-            showLogin();
-          }
-        })();
-
-        window.addEventListener("online", async () => {
-          window.tracker?.renderSyncStatus();
-          if (!hasSupabaseConfig()) return;
-          const session = await getSupabaseAuth()?.restoreSession();
-          if (session) await bootApp(session);
-        });
-        window.addEventListener("offline", () => {
-          window.tracker?.renderSyncStatus();
         });
       });
     </script>

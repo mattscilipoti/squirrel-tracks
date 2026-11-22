@@ -5,12 +5,15 @@
     "lint": "eslint web-frontend/js",
     "format": "prettier --write web-frontend",
     "format:check": "prettier --check web-frontend",
-    "test": "node --test web-frontend/js/*.test.cjs"
+    "test": "node --test web-frontend/js/*.test.cjs",
+    "vendor": "esbuild web-frontend/vendor-src/entry.js --bundle --format=esm --minify --legal-comments=none --outfile=web-frontend/vendor/yjs.js"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "eslint": "10.12.0",
     "globals": "17.13.0",
     "prettier": "3.9.9",
+    "y-indexeddb": "^9.0.12",
     "yjs": "^13.6.20"
   }
 }

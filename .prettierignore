@@ -4,3 +4,4 @@ backend/
 ios-app/
 supabase/.temp/
 *.sqlite3
+web-frontend/vendor/

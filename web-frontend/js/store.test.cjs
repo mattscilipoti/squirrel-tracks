@@ -146,3 +146,50 @@ test("migrates the old localStorage shape", () => {
   assert.equal(store.liveTasks().length, 2);
   assert.equal(store.catalog().find((task) => task.name === "Writing").interval_count, 2);
 });
+
+test("imports the Supabase export, merging sessions on one date", () => {
+  const store = device("a");
+  const slots = (...indexes) => indexes;
+  const count = store.importSupabaseExport([
+    {
+      date: "2026-10-15",
+      memo: "m",
+      notes: null,
+      start_time: "09:00",
+      tasks: [{ name: "Writing", intervals: slots(36, 37) }],
+    },
+    {
+      date: "2026-10-15",
+      memo: null,
+      notes: "n",
+      start_time: null,
+      tasks: [
+        { name: "writing", intervals: slots(38) },
+        { name: "Email", intervals: [] },
+      ],
+    },
+    { date: "bad", tasks: [] },
+  ]);
+  assert.equal(count, 2);
+  const day = store.readDay("2026-10-15");
+  assert.deepEqual(day.tasks, ["Writing", "Email"]);
+  assert.deepEqual(
+    day.gridData[0].flatMap((filled, slot) => (filled ? [slot] : [])),
+    [36, 37, 38],
+  );
+  assert.deepEqual([day.memo, day.notes, day.startTime], ["m", "n", "09:00"]);
+});
+
+test("lists a task's intervals and clears a day", () => {
+  const store = device("a");
+  const id = store.createTask("Writing");
+  store.setCell("2026-11-21", id, 1, true);
+  store.setCell("2026-11-22", id, 2, true);
+  assert.deepEqual(store.taskIntervals(id), [
+    { date: "2026-11-21", slot: 1 },
+    { date: "2026-11-22", slot: 2 },
+  ]);
+  store.clearDay("2026-11-22");
+  assert.equal(store.readDay("2026-11-22").gridData[0].some(Boolean), false);
+  assert.equal(store.readDay("2026-11-21").gridData[0][1], true);
+});

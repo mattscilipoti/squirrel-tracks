@@ -5,7 +5,7 @@
  * avoided on purpose: two devices that each create the same nested map would keep only
  * one of them and silently lose the other's contents.
  *
- *   taskNames   id                      -> { name, createdAt }
+ *   taskNames   id                      -> JSON text of { name, createdAt }
  *   tombstones  id                      -> true          (task deleted)
  *   dayTasks    date|taskId             -> order number  (task appears on that day)
  *   cells       date|taskId|slot        -> true          (filled bubble)
@@ -52,14 +52,19 @@ class DataStore {
 
   // ── Tasks ────────────────────────────────────────────────────────────────
 
+  taskRecord(id) {
+    const text = this.taskNames.get(id);
+    return text ? JSON.parse(text) : null;
+  }
+
   isLive(id) {
     return this.taskNames.has(id) && !this.tombstones.has(id);
   }
 
   liveTasks() {
     const tasks = [];
-    this.taskNames.forEach((value, id) => {
-      if (!this.tombstones.has(id)) tasks.push({ id, name: value.name });
+    this.taskNames.forEach((_value, id) => {
+      if (!this.tombstones.has(id)) tasks.push({ id, name: this.taskRecord(id).name });
     });
     return tasks.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   }
@@ -81,7 +86,10 @@ class DataStore {
     if (existing) return existing.id;
     const id = this.idFactory();
     this.transact(() => {
-      this.taskNames.set(id, { name: trimmed, createdAt: new Date().toISOString() });
+      this.taskNames.set(
+        id,
+        JSON.stringify({ name: trimmed, createdAt: new Date().toISOString() }),
+      );
     });
     return id;
   }
@@ -92,9 +100,11 @@ class DataStore {
     if (this.findTaskByName(trimmed, id)) {
       throw new Error("A task with that name already exists.");
     }
-    const current = this.taskNames.get(id);
+    const current = this.taskRecord(id);
     if (!current) throw new Error("Unknown task.");
-    this.transact(() => this.taskNames.set(id, { ...current, name: trimmed }));
+    this.transact(() =>
+      this.taskNames.set(id, JSON.stringify({ ...current, name: trimmed })),
+    );
   }
 
   /** Marks the task deleted. Its cells stay in the document but are never read. */
@@ -142,6 +152,7 @@ class DataStore {
 
   setDayField(date, field, value) {
     const key = `${date}|${field}`;
+    if ((this.dayFields.get(key) || "") === String(value || "")) return;
     this.transact(() => {
       if (value) this.dayFields.set(key, String(value));
       else this.dayFields.delete(key);
@@ -165,9 +176,32 @@ class DataStore {
       memo: this.dayFields.get(`${date}|memo`) || "",
       notes: this.dayFields.get(`${date}|notes`) || "",
       taskIds: entries.map((entry) => entry.id),
-      tasks: entries.map((entry) => this.taskNames.get(entry.id).name),
+      tasks: entries.map((entry) => this.taskRecord(entry.id).name),
       gridData,
     };
+  }
+
+  /** Clears every filled bubble on a day; the day's tasks stay. */
+  clearDay(date) {
+    this.transact(() => {
+      [...this.cells.keys()]
+        .filter((key) => key.startsWith(`${date}|`))
+        .forEach((key) => this.cells.delete(key));
+    });
+  }
+
+  /** Every filled bubble of one task, across all days. */
+  taskIntervals(taskId) {
+    const entries = [];
+    this.cells.forEach((_value, key) => {
+      const [date, id, slot] = key.split("|");
+      if (id === taskId) entries.push({ date, slot: Number(slot) });
+    });
+    return entries;
+  }
+
+  taskCreatedAt(taskId) {
+    return this.taskRecord(taskId)?.createdAt || null;
   }
 
   /** Every date that has a task, a filled bubble or a text field. */
@@ -275,9 +309,12 @@ class DataStore {
         if (oldId !== undefined && oldId !== null) idMap.set(String(oldId), taskId);
         const key = `${snapshot.date}|${taskId}`;
         if (!this.dayTasks.has(key)) this.dayTasks.set(key, index);
-        (snapshot.gridData?.[index] || []).forEach((filled, slot) => {
-          if (filled && slot < this.slotCount)
-            this.cells.set(`${snapshot.date}|${taskId}|${slot}`, true);
+        const row = snapshot.gridData?.[index] || [];
+        // Grids saved by the earliest versions had 60 slots starting at 9 AM (slot 36).
+        const offset = row.length === 60 ? 36 : 0;
+        row.forEach((filled, slot) => {
+          if (filled && slot + offset < this.slotCount)
+            this.cells.set(`${snapshot.date}|${taskId}|${slot + offset}`, true);
         });
       });
       for (const field of ["startTime", "memo", "notes"]) {
@@ -287,6 +324,36 @@ class DataStore {
       }
     });
     return idMap;
+  }
+
+  /**
+   * Imports the JSON produced by the one-off Supabase export query (see README):
+   * [{ date, memo, notes, start_time, tasks: [{ name, intervals: [slot, ...] }] }].
+   * Several sessions on one date merge. Returns the number of sessions imported.
+   */
+  importSupabaseExport(rows) {
+    if (!Array.isArray(rows)) throw new Error("Expected a JSON array of days.");
+    let imported = 0;
+    for (const row of rows) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(row?.date || "")) continue;
+      const tasks = row.tasks || [];
+      this.importSnapshot({
+        date: row.date,
+        memo: row.memo,
+        notes: row.notes,
+        startTime: row.start_time,
+        tasks: tasks.map((task) => task.name),
+        gridData: tasks.map((task) => {
+          const slots = new Array(this.slotCount).fill(false);
+          (task.intervals || []).forEach((slot) => {
+            if (slot >= 0 && slot < this.slotCount) slots[slot] = true;
+          });
+          return slots;
+        }),
+      });
+      imported++;
+    }
+    return imported;
   }
 
   /**
