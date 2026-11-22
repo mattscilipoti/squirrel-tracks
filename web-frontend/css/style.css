@@ -1161,3 +1161,48 @@ footer a:hover {
   box-sizing: border-box;
   margin: 0.5rem 0;
 }
+
+/* Startup / runtime error banner */
+.app-error {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: #b3261e;
+  color: #fff;
+}
+
+.app-error[hidden] {
+  display: none;
+}
+
+.app-error p {
+  margin: 0.25rem 0 0;
+}
+
+.app-error .remote-notice-dismiss {
+  color: inherit;
+}
+
+.pair-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.85rem;
+}
+
+.pair-details dt {
+  font-weight: 600;
+}
+
+.pair-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

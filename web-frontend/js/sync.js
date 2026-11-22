@@ -8,15 +8,15 @@
  * only sees the room name and connection metadata. Devices must be open at the same
  * time to sync, and tabs of the same browser sync through BroadcastChannel.
  *
+ * There is deliberately no default signaling server: the public demo servers that used to
+ * be built into y-webrtc have gone away. Until one is configured, only tabs of the same
+ * browser can find each other.
+ *
  * The WebRTC provider is injected (a global from the vendored bundle in the browser, a
  * fake in the tests).
  */
 class PeerSync {
   static STORAGE_KEY = "ettSyncPairing";
-  // A public demo server run by the y-webrtc author, with no guarantees. Self-host
-  // `y-webrtc-signaling` and set its address in the pairing dialog for something durable.
-  static DEFAULT_SIGNALING = ["wss://y-webrtc-eu.fly.dev"];
-
   constructor({ WebrtcProvider, doc, storage, randomBytes } = {}) {
     this.WebrtcProvider = WebrtcProvider;
     this.doc = doc;
@@ -121,9 +121,13 @@ class PeerSync {
     const pairing = this.pairing;
     if (!pairing || this.provider || !this.WebrtcProvider) return false;
     this.provider = new this.WebrtcProvider(pairing.room, this.doc, {
-      signaling: pairing.signaling || PeerSync.DEFAULT_SIGNALING,
+      signaling: this.signalingUrls,
       password: pairing.secret,
     });
+    for (const conn of this.provider.signalingConns || []) {
+      conn.on?.("connect", () => this.notify());
+      conn.on?.("disconnect", () => this.notify());
+    }
     this.provider.on("peers", (event) => {
       this.peers = event.webrtcPeers.length;
       this.notify();
@@ -148,6 +152,34 @@ class PeerSync {
     this.stop();
     this.storage.removeItem(PeerSync.STORAGE_KEY);
     this.notify();
+  }
+
+  /** Signaling servers in use: the pairing's own, or none. */
+  get signalingUrls() {
+    return this.pairing?.signaling || [];
+  }
+
+  /** "no-server": nothing configured; "unreachable": none connected; otherwise "ok". */
+  health() {
+    const { servers } = this.details() || { servers: [] };
+    if (!servers.length) return "no-server";
+    return servers.some((server) => server.connected) ? "ok" : "unreachable";
+  }
+
+  /** What the pairing dialog shows, so problems are visible without the console. */
+  details() {
+    const pairing = this.pairing;
+    if (!pairing) return null;
+    const connections = this.provider?.signalingConns || [];
+    return {
+      room: pairing.room,
+      servers: this.signalingUrls.map((url) => ({
+        url,
+        connected: Boolean(connections.find((conn) => conn.url === url)?.connected),
+      })),
+      devices: this.peers,
+      tabs: this.provider?.room?.bcConns?.size ?? 0,
+    };
   }
 
   /** Number of other devices connected right now (other tabs are not counted). */

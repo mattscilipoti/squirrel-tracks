@@ -116,6 +116,20 @@ class GridTaskTracker {
         icon: "✓",
         message: `Syncing with ${peers} other device${peers === 1 ? "" : "s"}`,
       };
+    const health = this.sync.health();
+    if (health === "no-server")
+      return {
+        state: "needs-server",
+        icon: "⚠",
+        message:
+          "Paired, but no signaling server is set: other devices can't find this one",
+      };
+    if (health === "unreachable")
+      return {
+        state: "error",
+        icon: "⚠",
+        message: "Can't reach the signaling server: check its address in Pair devices",
+      };
     return {
       state: "waiting",
       icon: "↻",
@@ -159,8 +173,39 @@ class GridTaskTracker {
       this.renderPairQr(link);
     }
     document.getElementById("pairStatus").textContent = this.syncStatusInfo().message;
-    document.getElementById("pairSignaling").value =
-      this.sync.pairing.signaling?.join(", ") || "";
+    const signalingInput = document.getElementById("pairSignaling");
+    if (document.activeElement !== signalingInput)
+      signalingInput.value = this.sync.pairing.signaling?.join(", ") || "";
+    const needsServer = this.sync.health() === "no-server";
+    document.getElementById("pairWarning").hidden = !needsServer;
+    if (needsServer) document.getElementById("pairServerSettings").open = true;
+    this.renderPairDetails();
+  }
+
+  /** The "Sync details" list: everything needed to tell why devices are not connecting. */
+  renderPairDetails() {
+    const details = this.sync.details();
+    const list = document.getElementById("pairDetails");
+    if (!details || !list) return;
+    const rows = [
+      ["Pairing code", `${details.room.slice(0, 8)}… (must match on every device)`],
+      ...(details.servers.length
+        ? details.servers.map((server) => [
+            "Signaling server",
+            `${server.url}: ${server.connected ? "connected" : "not connected"}`,
+          ])
+        : [["Signaling server", "none set"]]),
+      ["Other devices connected", String(details.devices)],
+      ["Other tabs in this browser", String(details.tabs)],
+    ];
+    list.replaceChildren();
+    for (const [term, value] of rows) {
+      const dt = document.createElement("dt");
+      dt.textContent = term;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      list.append(dt, dd);
+    }
   }
 
   renderPairQr(link) {

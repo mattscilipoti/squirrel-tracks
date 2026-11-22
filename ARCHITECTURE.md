@@ -66,9 +66,11 @@ also drawn as a QR code (`qrcode-generator`). The fragment is never sent to a se
 the provider's `password`, so signaling and data messages are encrypted. On load, `index.html`
 joins from `location.hash` (then clears it) or resumes the saved pairing.
 
-- Devices find each other through signaling servers (default: the public
-  `wss://y-webrtc-eu.fly.dev` demo; configurable, or self-hosted with `y-webrtc-signaling`), then
-  connect peer to peer. Tabs of one browser also sync over BroadcastChannel.
+- Devices find each other through signaling servers, then connect peer to peer. There is no default
+  server (the public y-webrtc demo servers are gone); one must be configured per pairing and travels in
+  the link. Self-host with `y-webrtc-signaling`. Tabs of one browser also sync over BroadcastChannel
+  without any server. `PeerSync.health()` reports `no-server`, `unreachable` or `ok`, and
+  `details()` feeds the "Sync details" list in the pairing dialog.
 - Both devices must be open at the same time; nothing is stored on a server. A future always-on
   peer would speak the same protocol.
 - Yjs merges whatever each side missed when two devices meet, so offline edits are not lost.

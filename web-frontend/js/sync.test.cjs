@@ -55,7 +55,7 @@ test("creating a pairing saves a valid room and secret and starts syncing", () =
   const [provider] = FakeProvider.instances;
   assert.equal(provider.room, pairing.room);
   assert.equal(provider.options.password, pairing.secret);
-  assert.deepEqual(provider.options.signaling, PeerSync.DEFAULT_SIGNALING);
+  assert.deepEqual(provider.options.signaling, []);
 });
 
 test("each new pairing is different", () => {
@@ -98,7 +98,7 @@ test("garbage in the location hash is ignored and keeps the existing pairing", (
   assert.equal(FakeProvider.instances.length, 1);
 });
 
-test("an invalid signaling address in a link falls back to the default", () => {
+test("an invalid signaling address in a link is dropped", () => {
   const host = make();
   host.createPairing();
   const { room, secret } = host.pairing;
@@ -108,10 +108,7 @@ test("an invalid signaling address in a link falls back to the default", () => {
     true,
   );
   assert.equal(guest.pairing.signaling, null);
-  assert.deepEqual(
-    FakeProvider.instances[0].options.signaling,
-    PeerSync.DEFAULT_SIGNALING,
-  );
+  assert.deepEqual(FakeProvider.instances[0].options.signaling, []);
 });
 
 test("changing the signaling server reconnects and validates the address", () => {
@@ -126,10 +123,7 @@ test("changing the signaling server reconnects and validates the address", () =>
     "ws://192.168.1.5:4444",
   ]);
   sync.setSignaling(null);
-  assert.deepEqual(
-    FakeProvider.instances[2].options.signaling,
-    PeerSync.DEFAULT_SIGNALING,
-  );
+  assert.deepEqual(FakeProvider.instances[2].options.signaling, []);
 });
 
 test("peer count follows the provider and listeners are told", () => {
@@ -166,6 +160,54 @@ test("a saved pairing resumes on the next start; corrupt storage means unpaired"
     storage.setItem(PeerSync.STORAGE_KEY, bad);
     assert.equal(make(storage).isPaired(), false, bad);
   }
+});
+
+test("health and details report missing, unreachable and connected signaling servers", () => {
+  const sync = make();
+  assert.equal(sync.details(), null);
+  assert.equal(sync.health(), "no-server");
+  sync.createPairing();
+  assert.equal(sync.health(), "no-server");
+  assert.deepEqual(sync.details().servers, []);
+
+  const connections = [
+    { url: "wss://a.example", connected: false, on() {} },
+    { url: "wss://b.example", connected: false, on() {} },
+  ];
+  sync.setSignaling(["wss://a.example", "wss://b.example"]);
+  FakeProvider.instances.at(-1).signalingConns = connections;
+  assert.equal(sync.health(), "unreachable");
+  connections[1].connected = true;
+  assert.equal(sync.health(), "ok");
+  const details = sync.details();
+  assert.deepEqual(details.servers, [
+    { url: "wss://a.example", connected: false },
+    { url: "wss://b.example", connected: true },
+  ]);
+  assert.equal(details.room, sync.pairing.room);
+  assert.equal(details.devices, 0);
+  FakeProvider.instances.at(-1).room = { bcConns: new Set(["tab"]) };
+  assert.equal(sync.details().tabs, 1);
+});
+
+test("connection changes on a signaling server notify listeners", () => {
+  const sync = make();
+  sync.createPairing();
+  const handlers = {};
+  sync.stop();
+  FakeProvider.prototype.signalingConns = [
+    { url: "wss://a.example", connected: false, on: (name, fn) => (handlers[name] = fn) },
+  ];
+  try {
+    sync.setSignaling(["wss://a.example"]);
+  } finally {
+    delete FakeProvider.prototype.signalingConns;
+  }
+  let notified = 0;
+  sync.onChange(() => notified++);
+  handlers.connect();
+  handlers.disconnect();
+  assert.equal(notified, 2);
 });
 
 // Each "device" runs in its own worker thread: y-webrtc keeps one global room table per

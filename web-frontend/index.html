@@ -41,7 +41,13 @@
             readonly
             aria-label="Pairing link"
           />
+          <p id="pairWarning" class="setup-error" hidden>
+            No signaling server is set, so other devices cannot find this one. Add one
+            under "Signaling server" below, then share the link (it carries the address).
+          </p>
           <p id="pairStatus" role="status"></p>
+          <h3>Sync details</h3>
+          <dl id="pairDetails" class="pair-details"></dl>
           <div class="modal-buttons">
             <button id="pairCopyBtn" type="button" class="btn btn-secondary">
               Copy link
@@ -50,15 +56,17 @@
               Unpair this device
             </button>
           </div>
-          <details>
+          <details id="pairServerSettings">
             <summary>Signaling server</summary>
             <p class="help-text">
               Devices find each other through a signaling server, which sees only
-              encrypted connection set-up messages, never your data. The default is a free
-              public demo server that may be slow or disappear. To run your own, start
-              <code>y-webrtc-signaling</code> and enter its <code>ws://</code> or
-              <code>wss://</code> address here, on every device. Leave empty for the
-              default.
+              encrypted connection set-up messages, never your data. There is no built-in
+              one, because free public ones come and go. Run your own (<code
+                >npx y-webrtc-signaling</code
+              >, see the README) and enter its address here. Use
+              <code>ws://localhost:4444</code> to try it on this computer; from the
+              https:// site other devices need a <code>wss://</code> address. Set it
+              before you share the link: the link carries it.
             </p>
             <input
               id="pairSignaling"
@@ -75,6 +83,21 @@
           <button id="pairCloseBtn" type="button" class="btn btn-tertiary">Close</button>
         </div>
       </div>
+    </div>
+
+    <div id="appError" class="app-error" role="alert" hidden>
+      <div>
+        <strong id="appErrorTitle"></strong>
+        <p id="appErrorDetail"></p>
+      </div>
+      <button
+        id="appErrorDismiss"
+        type="button"
+        class="remote-notice-dismiss"
+        aria-label="Dismiss"
+      >
+        ×
+      </button>
     </div>
 
     <div id="deleteTaskModal" class="modal hidden">
@@ -449,27 +472,70 @@
     <script src="js/store.js"></script>
     <script src="js/sync.js"></script>
     <script src="js/app-grid.js"></script>
+    <script>
+      // Startup problems must be visible: without this the page would just sit there.
+      (() => {
+        const banner = document.getElementById("appError");
+        window.showAppError = (title, detail = "", kind = "error") => {
+          document.getElementById("appErrorTitle").textContent = title;
+          document.getElementById("appErrorDetail").textContent = detail;
+          banner.dataset.kind = kind;
+          banner.hidden = false;
+        };
+        document
+          .getElementById("appErrorDismiss")
+          .addEventListener("click", () => (banner.hidden = true));
+        // Only report errors from this app, not from browser extensions.
+        const ours = (text) => String(text || "").includes(location.origin);
+        window.addEventListener("error", (event) => {
+          if (ours(event.filename))
+            window.showAppError("Something went wrong", event.message);
+        });
+        window.addEventListener("unhandledrejection", (event) => {
+          const reason = event.reason;
+          if (ours(reason?.stack))
+            window.showAppError("Something went wrong", reason.message || String(reason));
+        });
+        setTimeout(() => {
+          if (!window.tracker)
+            window.showAppError(
+              "The app is taking a long time to start",
+              "Your browser may be blocking local storage (private windows and some privacy settings do). Try a normal window. Your saved data is not affected.",
+              "slow",
+            );
+        }, 5000);
+      })();
+    </script>
     <script type="module">
       // Open the local database, then tell app-grid.js to start.
-      import { Y, IndexeddbPersistence, WebrtcProvider, qrcode } from "./vendor/yjs.js";
-      window.qrcode = qrcode;
-      const doc = new Y.Doc();
-      const persistence = new IndexeddbPersistence("squirrel-tracks", doc);
-      await persistence.whenSynced;
-      const store = new DataStore(Y, doc);
-      store.dedupeTasks();
-      // First run after the move off localStorage: bring the old data across.
-      if (store.isEmpty()) store.importLegacyStorage(localStorage);
-      // Ask the browser not to evict our data under storage pressure.
-      navigator.storage?.persist?.();
-      // Join a pairing from a link (#pair=...), then resume any saved pairing.
-      const sync = new PeerSync({ WebrtcProvider, doc, storage: localStorage });
-      if (sync.joinFromHash(location.hash))
-        history.replaceState(null, "", location.pathname + location.search);
-      else sync.start();
-      window.dispatchEvent(
-        new CustomEvent("app-store-ready", { detail: { store, sync } }),
-      );
+      try {
+        const { Y, IndexeddbPersistence, WebrtcProvider, qrcode } =
+          await import("./vendor/yjs.js");
+        window.qrcode = qrcode;
+        const doc = new Y.Doc();
+        const persistence = new IndexeddbPersistence("squirrel-tracks", doc);
+        await persistence.whenSynced;
+        const store = new DataStore(Y, doc);
+        store.dedupeTasks();
+        // First run after the move off localStorage: bring the old data across.
+        if (store.isEmpty()) store.importLegacyStorage(localStorage);
+        // Ask the browser not to evict our data under storage pressure.
+        navigator.storage?.persist?.();
+        // Join a pairing from a link (#pair=...), then resume any saved pairing.
+        const sync = new PeerSync({ WebrtcProvider, doc, storage: localStorage });
+        if (sync.joinFromHash(location.hash))
+          history.replaceState(null, "", location.pathname + location.search);
+        else sync.start();
+        window.dispatchEvent(
+          new CustomEvent("app-store-ready", { detail: { store, sync } }),
+        );
+        // A "taking a long time" notice is moot once we have started.
+        const banner = document.getElementById("appError");
+        if (banner.dataset.kind === "slow") banner.hidden = true;
+      } catch (error) {
+        window.showAppError("The app could not start", error?.message || String(error));
+        throw error;
+      }
     </script>
     <script>
       document.addEventListener("DOMContentLoaded", () => {

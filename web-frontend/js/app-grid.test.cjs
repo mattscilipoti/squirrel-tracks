@@ -727,6 +727,18 @@ function fakeSync(overrides = {}) {
   const sync = {
     paired: true,
     peerCount: 0,
+    healthState: "ok",
+    health() {
+      return this.healthState;
+    },
+    details() {
+      return {
+        room: "0123456789abcdef0123456789abcdef",
+        servers: [{ url: "wss://a.example", connected: true }],
+        devices: this.peerCount,
+        tabs: 0,
+      };
+    },
     pairing: { signaling: null },
     isPaired() {
       return this.paired;
@@ -754,6 +766,16 @@ test("sync status reflects pairing, connected devices and connectivity", () => {
   tracker.renderSyncStatus();
   assert.equal(elements.syncStatus.dataset.state, "waiting");
   assert.match(elements.syncStatusText.textContent, /another device/);
+
+  sync.healthState = "no-server";
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "needs-server");
+  assert.match(elements.syncStatusText.textContent, /no signaling server/);
+  sync.healthState = "unreachable";
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "error");
+  assert.match(elements.syncStatusText.textContent, /Can't reach the signaling server/);
+  sync.healthState = "ok";
 
   sync.peerCount = 1;
   tracker.renderSyncStatus();
@@ -802,4 +824,28 @@ test("a rejected signaling address is shown to the user", () => {
   elements.pairSignaling = { value: "https://nope" };
   tracker.savePairSignaling();
   assert.deepEqual(alerts, ["Use a ws:// or wss:// address."]);
+});
+
+test("the pairing dialog lists sync details", () => {
+  const { tracker, elements, context } = fixture("2026-10-15");
+  const texts = [];
+  context.document.createElement = () => ({ textContent: "" });
+  elements.pairDetails = {
+    replaceChildren() {},
+    append(...nodes) {
+      texts.push(...nodes.map((node) => node.textContent));
+    },
+  };
+  tracker.sync = fakeSync({ peerCount: 2 }).sync;
+  tracker.renderPairDetails();
+  assert.deepEqual(texts, [
+    "Pairing code",
+    "01234567… (must match on every device)",
+    "Signaling server",
+    "wss://a.example: connected",
+    "Other devices connected",
+    "2",
+    "Other tabs in this browser",
+    "0",
+  ]);
 });

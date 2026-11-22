@@ -100,9 +100,15 @@ deleted task and its interval count.
 
 ### Syncing your devices
 
-Choose **Advanced → Pair devices → Create pairing link** on one device. Open the link on another
-(or scan the QR code with your phone) and the two start syncing; repeat for each further device.
-The footer shows **Syncing with N other devices** while they are connected.
+You need a signaling server first (see below). Then choose **Advanced → Pair devices**, enter the
+server's address under **Signaling server**, and **Create pairing link** on one device. Open the link on
+another (or scan the QR code with your phone) and the two start syncing; repeat for each further
+device. The footer shows **Syncing with N other devices** while they are connected.
+
+If it does not connect, the footer and the **Sync details** list in the pairing dialog say why:
+no signaling server set, signaling server not connected (with its address), or connected but no
+other device found yet. Startup problems (for example a browser that blocks local storage) show as a
+red banner at the top of the page.
 
 - **Both devices must have the app open at the same time** to exchange changes. Anything you
   edit while apart is kept and merged the next time they meet: bubbles from both are kept, and
@@ -111,11 +117,15 @@ The footer shows **Syncing with N other devices** while they are connected.
   `#`, which browsers never send to a server. All traffic between your devices is encrypted with
   that secret. Anyone who has the link can read and change your data, so share it only with yourself.
 - **Signaling server.** Devices find each other through a small signaling server that sees only
-  encrypted set-up messages, never your data. The default is a free public demo server
-  (`wss://y-webrtc-eu.fly.dev`) with no guarantees. To run your own, start
-  `npx y-webrtc-signaling` (default port 4444) somewhere reachable, and enter its `ws://` or
-  `wss://` address under **Signaling server** in the pairing dialog (the pairing link carries it,
-  so devices that join from the link pick it up).
+  encrypted set-up messages, never your data. There is no built-in one: the free public servers
+  that y-webrtc used to point to have gone away. Run your own with `npx y-webrtc-signaling`
+  (from this repo after `npm install`; listens on port 4444). Enter its address under
+  **Signaling server** in the pairing dialog _before_ you share the link, since the link carries it.
+  - To try it on one computer: `ws://localhost:4444`, with the app on `http://localhost:5000`.
+  - For other devices, and for the GitHub Pages site (https), the address must be `wss://` (the
+    browser blocks plain `ws://` from an https page, except `localhost`). That means hosting the
+    server somewhere with a TLS certificate, for example a small VPS or container behind a TLS
+    proxy; it is stateless and uses almost no resources.
 - **Unpair this device** stops syncing here and keeps your data. It does not remove other devices;
   to cut one off, unpair everywhere and create a new pairing, which has a new secret.
 - Some networks (strict firewalls, some mobile carriers) block direct connections between devices.
