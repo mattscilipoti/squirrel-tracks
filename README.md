@@ -28,11 +28,23 @@ repo root date from the original Rails/iOS plan and no longer describe the app.
 ## 🎯 Quick Start
 
 ```bash
-npm install                    # lint/format/test tooling only
-web-frontend/start-server.sh   # serves the app at http://localhost:5000
-npm test                       # unit tests
+npm install                # tooling only; the app itself has no build step
+npm start                  # serve the app at http://localhost:5000 (PORT=8080 npm start for another port)
+npm run signaling          # run a signaling server for device pairing on port 4444
+npm test                   # unit tests
 npm run lint && npm run format:check
 ```
+
+All scripts (`npm run` lists them):
+
+| Command                                 | What it does                                                                      |
+| --------------------------------------- | --------------------------------------------------------------------------------- |
+| `npm start`                             | Serve `web-frontend/` on port 5000 (`web-frontend/start-server.sh`)               |
+| `npm run signaling`                     | Signaling server for pairing, port 4444 (`PORT=4455 npm run signaling` to change) |
+| `npm run check:signaling -- wss://host` | Test whether a signaling address is reachable and speaks WebSocket                |
+| `npm test`                              | Unit tests                                                                        |
+| `npm run lint` / `npm run format:check` | ESLint / Prettier check (`npm run format` rewrites files)                         |
+| `npm run vendor`                        | Rebuild `web-frontend/vendor/yjs.js` after changing the Yjs-related dependencies  |
 
 Everything is stored in your browser (IndexedDB), per browser and per address: `localhost:5000` and the
 GitHub Pages site each have their own copy. Use **Back up** and **Import** under Advanced to move data
@@ -118,11 +130,11 @@ red banner at the top of the page.
   that secret. Anyone who has the link can read and change your data, so share it only with yourself.
 - **Signaling server.** Devices find each other through a small signaling server that sees only
   encrypted set-up messages, never your data. There is no built-in one: the free public servers
-  that y-webrtc used to point to have gone away. Run your own with `npx y-webrtc-signaling`
+  that y-webrtc used to point to have gone away. Run your own with `npm run signaling`
   (from this repo after `npm install`; listens on port 4444). Enter its address under
   **Signaling server** in the pairing dialog _before_ you share the link, since the link carries it.
   - To try it on one computer: `ws://localhost:4444`, with the app on `http://localhost:5000`.
-  - To test any signaling address from a given machine: `scripts/check-signaling.sh wss://your.server`
+  - To test any signaling address from a given machine: `npm run check:signaling -- wss://your.server`
     (needs only bash and curl; it reports whether DNS, the connection or the WebSocket handshake fails).
   - For other devices, and for the GitHub Pages site (https), the address must be `wss://` (the
     browser blocks plain `ws://` from an https page, except `localhost`). That means hosting the

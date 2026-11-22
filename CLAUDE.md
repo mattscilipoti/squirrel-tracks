@@ -18,7 +18,9 @@ node --test web-frontend/js/app-grid.test.cjs                  # one file
 node --test --test-name-pattern="rename" web-frontend/js/*.test.cjs  # one test by name
 npm run lint                               # eslint web-frontend/js
 npm run format / npm run format:check      # prettier on web-frontend
-web-frontend/start-server.sh               # serve on :5000 (WEBrick via root Gemfile)
+npm start                                  # serve on :5000 (web-frontend/start-server.sh, WEBrick via root Gemfile)
+npm run signaling                          # y-webrtc signaling server on :4444, for pairing devices locally
+npm run check:signaling -- ws://localhost:4444   # is a signaling address reachable? (scripts/check-signaling.sh)
 npm run vendor                             # rebuild web-frontend/vendor/yjs.js (esbuild)
 ```
 

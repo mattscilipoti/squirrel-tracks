@@ -6,7 +6,10 @@
     "format": "prettier --write web-frontend",
     "format:check": "prettier --check web-frontend",
     "test": "node --test web-frontend/js/*.test.cjs",
-    "vendor": "esbuild web-frontend/vendor-src/entry.js --bundle --format=esm --minify --legal-comments=none --outfile=web-frontend/vendor/yjs.js"
+    "vendor": "esbuild web-frontend/vendor-src/entry.js --bundle --format=esm --minify --legal-comments=none --outfile=web-frontend/vendor/yjs.js",
+    "start": "web-frontend/start-server.sh",
+    "signaling": "y-webrtc-signaling",
+    "check:signaling": "scripts/check-signaling.sh"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
