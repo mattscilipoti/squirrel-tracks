@@ -7,6 +7,76 @@
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
+    <div id="pairModal" class="modal hidden">
+      <div
+        class="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pairTitle"
+      >
+        <h2 id="pairTitle">Pair devices</h2>
+        <div id="pairUnpaired">
+          <p>
+            Pairing keeps this device and your others in sync, directly between them, with
+            no account and no server holding your data. Both devices must have the app
+            open at the same time to exchange changes.
+          </p>
+          <button id="pairCreateBtn" type="button" class="btn btn-primary">
+            Create pairing link
+          </button>
+          <p class="help-text">
+            Already have a link from another device? Just open it in this browser.
+          </p>
+        </div>
+        <div id="pairPaired" hidden>
+          <p>
+            Open this link on your other device, or scan the code. Anyone who has it can
+            read and change your data, so share it only with yourself.
+          </p>
+          <div id="pairQr" class="pair-qr"></div>
+          <input
+            id="pairLink"
+            class="pair-link"
+            type="text"
+            readonly
+            aria-label="Pairing link"
+          />
+          <p id="pairStatus" role="status"></p>
+          <div class="modal-buttons">
+            <button id="pairCopyBtn" type="button" class="btn btn-secondary">
+              Copy link
+            </button>
+            <button id="pairUnpairBtn" type="button" class="btn btn-danger">
+              Unpair this device
+            </button>
+          </div>
+          <details>
+            <summary>Signaling server</summary>
+            <p class="help-text">
+              Devices find each other through a signaling server, which sees only
+              encrypted connection set-up messages, never your data. The default is a free
+              public demo server that may be slow or disappear. To run your own, start
+              <code>y-webrtc-signaling</code> and enter its <code>ws://</code> or
+              <code>wss://</code> address here, on every device. Leave empty for the
+              default.
+            </p>
+            <input
+              id="pairSignaling"
+              type="text"
+              placeholder="wss://signal.example.org"
+              aria-label="Signaling server address"
+            />
+            <button id="pairSignalingSaveBtn" type="button" class="btn btn-secondary">
+              Save
+            </button>
+          </details>
+        </div>
+        <div class="modal-buttons">
+          <button id="pairCloseBtn" type="button" class="btn btn-tertiary">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div id="deleteTaskModal" class="modal hidden">
       <div
         class="modal-content"
@@ -218,6 +288,13 @@
                   Export CSV
                 </button>
                 <button
+                  id="pairBtn"
+                  class="btn btn-secondary"
+                  title="Sync this device with your other devices, directly between them."
+                >
+                  Pair devices
+                </button>
+                <button
                   id="exportBackupBtn"
                   class="btn btn-secondary"
                   title="Download a backup of all days and tasks. Importing it on another device merges the two."
@@ -370,10 +447,12 @@
     <script src="js/remote-changes.js"></script>
     <script src="js/time-calculations.js"></script>
     <script src="js/store.js"></script>
+    <script src="js/sync.js"></script>
     <script src="js/app-grid.js"></script>
     <script type="module">
       // Open the local database, then tell app-grid.js to start.
-      import { Y, IndexeddbPersistence } from "./vendor/yjs.js";
+      import { Y, IndexeddbPersistence, WebrtcProvider, qrcode } from "./vendor/yjs.js";
+      window.qrcode = qrcode;
       const doc = new Y.Doc();
       const persistence = new IndexeddbPersistence("squirrel-tracks", doc);
       await persistence.whenSynced;
@@ -383,7 +462,14 @@
       if (store.isEmpty()) store.importLegacyStorage(localStorage);
       // Ask the browser not to evict our data under storage pressure.
       navigator.storage?.persist?.();
-      window.dispatchEvent(new CustomEvent("app-store-ready", { detail: { store } }));
+      // Join a pairing from a link (#pair=...), then resume any saved pairing.
+      const sync = new PeerSync({ WebrtcProvider, doc, storage: localStorage });
+      if (sync.joinFromHash(location.hash))
+        history.replaceState(null, "", location.pathname + location.search);
+      else sync.start();
+      window.dispatchEvent(
+        new CustomEvent("app-store-ready", { detail: { store, sync } }),
+      );
     </script>
     <script>
       document.addEventListener("DOMContentLoaded", () => {

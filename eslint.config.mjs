@@ -26,6 +26,8 @@ export default [
         // top-level names, so these only matter for files that consume them.
         GridTaskTracker: "readonly",
         DataStore: "readonly",
+        PeerSync: "readonly",
+        qrcode: "readonly",
         RemoteChanges: "readonly",
         TimeCalculations: "readonly",
       },

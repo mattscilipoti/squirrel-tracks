@@ -721,3 +721,85 @@ test("resume clears the pause and immediately updates the indicator", () => {
   assert.equal(elements.autoCenterStatus.hidden, true);
   assert.equal(updated, true);
 });
+
+function fakeSync(overrides = {}) {
+  const calls = [];
+  const sync = {
+    paired: true,
+    peerCount: 0,
+    pairing: { signaling: null },
+    isPaired() {
+      return this.paired;
+    },
+    onChange() {},
+    setSignaling(urls) {
+      calls.push(urls);
+    },
+    ...overrides,
+  };
+  return { sync, calls };
+}
+
+test("sync status reflects pairing, connected devices and connectivity", () => {
+  const { tracker, context, elements } = fixture("2026-10-15");
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "local-only", "no sync object");
+
+  const { sync } = fakeSync({ paired: false });
+  tracker.sync = sync;
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "local-only", "not paired");
+
+  sync.paired = true;
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "waiting");
+  assert.match(elements.syncStatusText.textContent, /another device/);
+
+  sync.peerCount = 1;
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "synced");
+  assert.equal(elements.syncStatusText.textContent, "Syncing with 1 other device");
+  sync.peerCount = 3;
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatusText.textContent, "Syncing with 3 other devices");
+
+  context.navigator = { onLine: false };
+  tracker.renderSyncStatus();
+  assert.equal(elements.syncStatus.dataset.state, "offline");
+});
+
+test("the last time another device sent changes is remembered", () => {
+  const { tracker, storage, elements } = fixture("2026-10-15");
+  assert.equal(elements.lastCloudSync.textContent, undefined);
+  tracker.renderSyncStatus();
+  assert.equal(elements.lastCloudSync.textContent, "Never");
+  const at = new Date("2026-10-18T12:34:56.000Z");
+  tracker.recordSyncTime(at);
+  assert.equal(storage.get("ettLastSyncTime"), at.toISOString());
+  assert.equal(elements.lastCloudSync.dateTime, at.toISOString());
+  assert.notEqual(elements.lastCloudSync.textContent, "Never");
+});
+
+test("saving signaling servers splits the list and empty input restores the default", () => {
+  const { tracker, elements } = fixture("2026-10-15");
+  const { sync, calls } = fakeSync();
+  tracker.sync = sync;
+  elements.pairSignaling = { value: " wss://a.example , ws://10.0.0.2:4444 " };
+  tracker.savePairSignaling();
+  elements.pairSignaling.value = "  ";
+  tracker.savePairSignaling();
+  assert.deepEqual(calls, [["wss://a.example", "ws://10.0.0.2:4444"], null]);
+});
+
+test("a rejected signaling address is shown to the user", () => {
+  const { tracker, elements, alerts } = fixture("2026-10-15");
+  const { sync } = fakeSync({
+    setSignaling() {
+      throw new Error("Use a ws:// or wss:// address.");
+    },
+  });
+  tracker.sync = sync;
+  elements.pairSignaling = { value: "https://nope" };
+  tracker.savePairSignaling();
+  assert.deepEqual(alerts, ["Use a ws:// or wss:// address."]);
+});

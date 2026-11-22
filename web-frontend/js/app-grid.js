@@ -5,8 +5,12 @@
  * the selected day in memory for rendering and writes every edit through to the store.
  */
 class GridTaskTracker {
-  constructor(store) {
+  constructor(store, sync = null) {
     this.store = store;
+    this.sync = sync;
+    const storedSyncTime = localStorage.getItem("ettLastSyncTime");
+    this.lastSyncTime =
+      storedSyncTime && !Number.isNaN(Date.parse(storedSyncTime)) ? storedSyncTime : null;
     this.tasks = [];
     this.taskIds = [];
     this.taskCatalog = [];
@@ -40,7 +44,16 @@ class GridTaskTracker {
     this.updateTaskPicker();
     this.renderSyncStatus();
     this.initializeSquirrelTrails();
-    this.store.onRemoteChange(() => this.scheduleRemoteRefresh());
+    this.store.onRemoteChange((origin) => {
+      if (origin !== "import") this.recordSyncTime();
+      this.scheduleRemoteRefresh();
+    });
+    this.sync?.onChange(() => {
+      this.renderSyncStatus();
+      this.renderPairDialog();
+    });
+    window.addEventListener?.("online", () => this.renderSyncStatus());
+    window.addEventListener?.("offline", () => this.renderSyncStatus());
 
     this.currentTimeObserver = new ResizeObserver(() => this.updateCurrentTimeLine());
     this.currentTimeObserver.observe(document.getElementById("timeGrid"));
@@ -72,12 +85,140 @@ class GridTaskTracker {
     const statusText = document.getElementById("syncStatusText");
     const lastSync = document.getElementById("lastCloudSync");
     if (!status || !statusIcon || !statusText || !lastSync) return;
-    status.dataset.state = "local-only";
-    statusIcon.textContent = "✓";
-    statusText.textContent = "Saved on this device";
-    lastSync.removeAttribute("datetime");
-    lastSync.textContent = "Never";
-    lastSync.removeAttribute("title");
+    const { state, icon, message } = this.syncStatusInfo();
+    status.dataset.state = state;
+    statusIcon.textContent = icon;
+    statusText.textContent = message;
+    if (this.lastSyncTime) {
+      lastSync.dateTime = this.lastSyncTime;
+      lastSync.textContent = new Date(this.lastSyncTime).toLocaleString();
+      lastSync.title = this.lastSyncTime;
+    } else {
+      lastSync.removeAttribute("datetime");
+      lastSync.textContent = "Never";
+      lastSync.removeAttribute("title");
+    }
+  }
+
+  syncStatusInfo() {
+    if (!this.sync?.isPaired())
+      return { state: "local-only", icon: "✓", message: "Saved on this device" };
+    if (globalThis.navigator?.onLine === false)
+      return {
+        state: "offline",
+        icon: "⚠",
+        message: "Offline: changes will sync when reconnected",
+      };
+    const peers = this.sync.peerCount;
+    if (peers > 0)
+      return {
+        state: "synced",
+        icon: "✓",
+        message: `Syncing with ${peers} other device${peers === 1 ? "" : "s"}`,
+      };
+    return {
+      state: "waiting",
+      icon: "↻",
+      message: "Paired: open the app on another device to sync",
+    };
+  }
+
+  /** Remember when another device last sent us changes. */
+  recordSyncTime(now = new Date()) {
+    this.lastSyncTime = now.toISOString();
+    localStorage.setItem("ettLastSyncTime", this.lastSyncTime);
+    this.renderSyncStatus();
+  }
+
+  // ── Pairing dialog ──────────────────────────────────────────────────────────
+
+  openPairDialog() {
+    this.renderPairDialog();
+    document.getElementById("pairModal").classList.remove("hidden");
+  }
+
+  closePairDialog() {
+    document.getElementById("pairModal").classList.add("hidden");
+  }
+
+  pairLink() {
+    return this.sync?.link(`${location.origin}${location.pathname}`) || "";
+  }
+
+  renderPairDialog() {
+    const dialog = document.getElementById("pairModal");
+    if (!dialog || dialog.classList.contains("hidden")) return;
+    const paired = Boolean(this.sync?.isPaired());
+    document.getElementById("pairUnpaired").hidden = paired;
+    document.getElementById("pairPaired").hidden = !paired;
+    if (!paired) return;
+    const link = this.pairLink();
+    const linkInput = document.getElementById("pairLink");
+    if (linkInput.value !== link) {
+      linkInput.value = link;
+      this.renderPairQr(link);
+    }
+    document.getElementById("pairStatus").textContent = this.syncStatusInfo().message;
+    document.getElementById("pairSignaling").value =
+      this.sync.pairing.signaling?.join(", ") || "";
+  }
+
+  renderPairQr(link) {
+    const target = document.getElementById("pairQr");
+    target.replaceChildren();
+    if (typeof qrcode === "undefined") return;
+    try {
+      const code = qrcode(0, "M");
+      code.addData(link);
+      code.make();
+      target.innerHTML = code.createSvgTag({ scalable: true });
+      target.firstElementChild?.setAttribute("role", "img");
+      target.firstElementChild?.setAttribute("aria-label", "QR code of the pairing link");
+    } catch (error) {
+      console.warn("Could not draw the pairing QR code:", error);
+    }
+  }
+
+  createPairing() {
+    this.sync.createPairing();
+    this.renderSyncStatus();
+    this.renderPairDialog();
+  }
+
+  async copyPairLink() {
+    const input = document.getElementById("pairLink");
+    try {
+      await navigator.clipboard.writeText(input.value);
+    } catch {
+      input.select();
+    }
+  }
+
+  savePairSignaling() {
+    const text = document.getElementById("pairSignaling").value;
+    const urls = text
+      .split(/[\s,]+/)
+      .map((url) => url.trim())
+      .filter(Boolean);
+    try {
+      this.sync.setSignaling(urls.length ? urls : null);
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+    this.renderPairDialog();
+  }
+
+  unpair() {
+    if (
+      !confirm(
+        "Unpair this device? Your data stays here, but it will stop syncing until you pair again. Other devices keep their pairing.",
+      )
+    )
+      return;
+    this.sync.unpair();
+    this.renderSyncStatus();
+    this.renderPairDialog();
   }
 
   /** Per-device settings that are not part of the shared data. */
@@ -287,6 +428,26 @@ class GridTaskTracker {
         alert(`Could not import ${file.name}: ${error.message || "Unknown error"}`);
       }
     });
+
+    // Pairing
+    document
+      .getElementById("pairBtn")
+      .addEventListener("click", () => this.openPairDialog());
+    document
+      .getElementById("pairCloseBtn")
+      .addEventListener("click", () => this.closePairDialog());
+    document
+      .getElementById("pairCreateBtn")
+      .addEventListener("click", () => this.createPairing());
+    document
+      .getElementById("pairCopyBtn")
+      .addEventListener("click", () => this.copyPairLink());
+    document
+      .getElementById("pairSignalingSaveBtn")
+      .addEventListener("click", () => this.savePairSignaling());
+    document
+      .getElementById("pairUnpairBtn")
+      .addEventListener("click", () => this.unpair());
 
     // Export
     document
@@ -1247,5 +1408,5 @@ class GridTaskTracker {
  * Start the tracker once the page has opened the data store (see index.html).
  */
 window.addEventListener?.("app-store-ready", (event) => {
-  window.tracker = new GridTaskTracker(event.detail.store);
+  window.tracker = new GridTaskTracker(event.detail.store, event.detail.sync);
 });

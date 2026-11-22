@@ -8,7 +8,7 @@ Where does all my time go?
 This is a digital version of that [Emergent Task Timing](https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/), with 15-minute interval tracking, for noticing where your day goes. Track tasks in 15-minute bubbles and use a gentle, adjustable reminder to check in throughout the day.
 
 **Tech Stack**: Plain HTML/CSS/JS in the browser, no build step and no server. Data is stored on your device ([Yjs](https://yjs.dev) in IndexedDB), so it works offline and belongs to you.
-**Status**: Web app live on GitHub Pages. Local-first: no account and no cloud service. Devices are synced by exporting a backup and importing it elsewhere (merging, never overwriting); direct device-to-device sync is planned. The Rails API and iOS app in this repo are early experiments and are not in use.
+**Status**: Web app live on GitHub Pages. Local-first: no account and no cloud service. Devices sync directly with each other (WebRTC, end-to-end encrypted) once paired, and you can also move data by exporting a backup and importing it elsewhere (merging, never overwriting). The Rails API and iOS app in this repo are early experiments and are not in use.
 
 ---
 
@@ -62,18 +62,19 @@ warning. **Today** returns to the current day and removes the warning. Editing,
 clearing, and export apply to the selected day. The now-line
 and Current Slot appear only for today. Reminder timing does not change.
 
-Add stays visible beside the task input. Clear Grid, Export CSV, Back up, and Import are in the
+Add stays visible beside the task input. Clear Grid, Export CSV, Pair devices, Back up, and Import are in the
 collapsed **Advanced** section in the same toolbar. Expand Advanced
 to access these actions; existing confirmations and tooltips remain in place.
 
-| Action                | Purpose                                                                                                                |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Add                   | Add a task row to the selected day. Enter in the task field also adds it.                                              |
-| Clear Grid            | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes.                                 |
-| Export CSV            | Download task totals and activity summaries for the selected day.                                                      |
-| Back up               | Download all days and tasks as an `.ettbackup` file.                                                                   |
-| Import                | Merge an `.ettbackup` file, or a Supabase export `.json`, into this browser's data. Nothing is overwritten or removed. |
-| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering.           |
+| Action                | Purpose                                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add                   | Add a task row to the selected day. Enter in the task field also adds it.                                                                               |
+| Clear Grid            | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes.                                                                  |
+| Export CSV            | Download task totals and activity summaries for the selected day.                                                                                       |
+| Pair devices          | Create a pairing link / QR code to sync this device with your others, or see sync status and unpair. See [Syncing your devices](#syncing-your-devices). |
+| Back up               | Download all days and tasks as an `.ettbackup` file.                                                                                                    |
+| Import                | Merge an `.ettbackup` file, or a Supabase export `.json`, into this browser's data. Nothing is overwritten or removed.                                  |
+| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering.                                            |
 
 Hover over each action for its tooltip. Remove individual task rows with their remove control.
 Other days are not cleared by these actions.
@@ -97,9 +98,33 @@ intervals (all of them when there are 10 or fewer). Unlike a row's ×, which onl
 task from the current day, deleting cannot be undone. When it finishes, a message names the
 deleted task and its interval count.
 
+### Syncing your devices
+
+Choose **Advanced → Pair devices → Create pairing link** on one device. Open the link on another
+(or scan the QR code with your phone) and the two start syncing; repeat for each further device.
+The footer shows **Syncing with N other devices** while they are connected.
+
+- **Both devices must have the app open at the same time** to exchange changes. Anything you
+  edit while apart is kept and merged the next time they meet: bubbles from both are kept, and
+  for a rename or a memo the later edit wins. Browsers cannot sync in the background.
+- **The link is the key.** It contains a random room name and secret, in the part of the URL after
+  `#`, which browsers never send to a server. All traffic between your devices is encrypted with
+  that secret. Anyone who has the link can read and change your data, so share it only with yourself.
+- **Signaling server.** Devices find each other through a small signaling server that sees only
+  encrypted set-up messages, never your data. The default is a free public demo server
+  (`wss://y-webrtc-eu.fly.dev`) with no guarantees. To run your own, start
+  `npx y-webrtc-signaling` (default port 4444) somewhere reachable, and enter its `ws://` or
+  `wss://` address under **Signaling server** in the pairing dialog (the pairing link carries it,
+  so devices that join from the link pick it up).
+- **Unpair this device** stops syncing here and keeps your data. It does not remove other devices;
+  to cut one off, unpair everywhere and create a new pairing, which has a new secret.
+- Some networks (strict firewalls, some mobile carriers) block direct connections between devices.
+  Back up and Import still work as a fallback.
+- Tabs of the same browser sync with each other automatically.
+
 ### Changes from other devices
 
-When data from another device arrives (today by importing a backup) and it changes the selected day
+When data from another device arrives (by pairing or by importing a backup) and it changes the selected day
 (bubbles, tasks, renames, memo, or notes), the page updates itself and shows a notice listing what
 changed, for example `"Writing": +3 intervals` or `Renamed "A" to "B"`. The notice disappears
 after 20 seconds or when dismissed. Text you are typing in memo or notes is kept unless the other
@@ -160,7 +185,7 @@ your devices.
 
 ## 💡 Ideas, not started
 
-- Direct device-to-device sync (WebRTC), with an optional always-on relay
+- An always-on peer (for example on a home server) so devices sync without being open together
 - Analytics views over the interval history
 - Native mobile apps (`ios-app/` is only a placeholder) and push notifications
 
@@ -175,7 +200,7 @@ A: Simplicity. No framework and no build step; vanilla JS is fast enough for a t
 A: No. There is no sign-in; data stays in your browser. Use Back up regularly, since clearing site data deletes it.
 
 **Q: Can I use it on my phone and laptop?**  
-A: Yes, but they hold separate copies for now. Back up on one and Import on the other; the merge keeps both devices' changes.
+A: Yes. Pair them (Advanced → Pair devices) and they sync directly while both are open, or move data by hand with Back up and Import. Either way the merge keeps both devices' changes.
 
 **Q: How is it deployed?**  
 A: A GitHub Actions workflow publishes `web-frontend/` to GitHub Pages on every push to `main` (see [README-DEV.md](README-DEV.md)).

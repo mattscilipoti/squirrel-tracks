@@ -1130,3 +1130,34 @@ footer a:hover {
     flex: 1 1 100%;
   }
 }
+
+/* Pair devices dialog */
+.pair-qr {
+  width: 200px;
+  max-width: 100%;
+  margin: 0.75rem auto;
+  background: #fff;
+  padding: 0.5rem;
+  border-radius: 8px;
+}
+
+.pair-qr:empty {
+  display: none;
+}
+
+.pair-link {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+#pairModal details {
+  margin-top: 1rem;
+}
+
+#pairModal details input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.5rem 0;
+}
