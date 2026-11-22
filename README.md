@@ -122,6 +122,8 @@ red banner at the top of the page.
   (from this repo after `npm install`; listens on port 4444). Enter its address under
   **Signaling server** in the pairing dialog _before_ you share the link, since the link carries it.
   - To try it on one computer: `ws://localhost:4444`, with the app on `http://localhost:5000`.
+  - To test any signaling address from a given machine: `scripts/check-signaling.sh wss://your.server`
+    (needs only bash and curl; it reports whether DNS, the connection or the WebSocket handshake fails).
   - For other devices, and for the GitHub Pages site (https), the address must be `wss://` (the
     browser blocks plain `ws://` from an https page, except `localhost`). That means hosting the
     server somewhere with a TLS certificate, for example a small VPS or container behind a TLS
