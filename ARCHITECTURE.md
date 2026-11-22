@@ -12,13 +12,14 @@ Browser (vanilla JS)
   → GridTaskTracker (in-memory copy of the selected day, rendering, UI)
   → DataStore (the only code that touches Yjs)
   → Y.Doc  ⇄  IndexedDB ("squirrel-tracks", via y-indexeddb)
+          ⇄  paired devices (via y-webrtc, encrypted)
 ```
 
 Every edit is written to the Y.Doc immediately and persisted by y-indexeddb. Each
 browser and address (for example `localhost:5000` and the GitHub Pages site) has its
-own copy. Copies are combined by exporting a backup (`Y.encodeStateAsUpdate`) and
-importing it elsewhere; importing merges, it never overwrites. Device-to-device sync
-over WebRTC (`y-webrtc`, with an optional always-on relay) is planned but not built.
+own copy. Copies are combined in two ways: paired devices sync live over WebRTC (below), and
+a backup (`Y.encodeStateAsUpdate`) can be exported and imported elsewhere. Importing merges,
+it never overwrites.
 
 ### Why Yjs
 
@@ -56,6 +57,25 @@ Merge rules:
 Not shared between devices: the selected date and "follow today" (`ettDeviceState`),
 the reminder interval, bell and volume (`ettReminderSettings`).
 
+### Pairing and sync (`web-frontend/js/sync.js`)
+
+`PeerSync` wraps y-webrtc's `WebrtcProvider`. A pairing is a random room name (16 bytes, hex)
+and secret (16 bytes, base64url) created on one device and saved in localStorage
+(`ettSyncPairing`, per device). It travels as a link `…/#pair=<room>.<secret>[&signaling=<urls>]`,
+also drawn as a QR code (`qrcode-generator`). The fragment is never sent to a server. The secret is
+the provider's `password`, so signaling and data messages are encrypted. On load, `index.html`
+joins from `location.hash` (then clears it) or resumes the saved pairing.
+
+- Devices find each other through signaling servers (default: the public
+  `wss://y-webrtc-eu.fly.dev` demo; configurable, or self-hosted with `y-webrtc-signaling`), then
+  connect peer to peer. Tabs of one browser also sync over BroadcastChannel.
+- Both devices must be open at the same time; nothing is stored on a server. A future always-on
+  peer would speak the same protocol.
+- Yjs merges whatever each side missed when two devices meet, so offline edits are not lost.
+- Peers = other devices only (`webrtcPeers`, not tabs); the footer shows the count, and
+  `DataStore.onRemoteChange` records the last time another device sent changes.
+- `stop()` also destroys the provider's awareness (its timer otherwise outlives the provider).
+
 ### Startup
 
 `index.html` opens the Y.Doc and IndexedDB persistence (loaded from the vendored
@@ -75,17 +95,18 @@ device changed the same field.
 
 No build step. Serve with any static HTTP server (`web-frontend/start-server.sh`).
 
-| File                      | Purpose                                                             |
-| ------------------------- | ------------------------------------------------------------------- |
-| `index.html`              | Entry point, delete-task dialog, module script that opens the store |
-| `js/store.js`             | `DataStore` - the Yjs data layer, merging, import/export            |
-| `js/app-grid.js`          | `GridTaskTracker` - grid, tasks, dates, reminder, backup/import UI  |
-| `js/time-calculations.js` | Date/time utilities, interval math, activity summaries              |
-| `js/remote-changes.js`    | `RemoteChanges` - pure diff/summary of the screen vs the store      |
-| `js/version.js`           | Build stamp (overwritten by the deploy workflow)                    |
-| `vendor/yjs.js`           | Bundled Yjs + y-indexeddb. Generated: `npm run vendor`, then commit |
-| `vendor-src/entry.js`     | Input for the vendor bundle                                         |
-| `css/style.css`           | All styles                                                          |
+| File                      | Purpose                                                                           |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `index.html`              | Entry point, delete-task dialog, module script that opens the store               |
+| `js/store.js`             | `DataStore` - the Yjs data layer, merging, import/export                          |
+| `js/sync.js`              | `PeerSync` - pairing links and the WebRTC provider                                |
+| `js/app-grid.js`          | `GridTaskTracker` - grid, tasks, dates, reminder, backup/import, pairing UI       |
+| `js/time-calculations.js` | Date/time utilities, interval math, activity summaries                            |
+| `js/remote-changes.js`    | `RemoteChanges` - pure diff/summary of the screen vs the store                    |
+| `js/version.js`           | Build stamp (overwritten by the deploy workflow)                                  |
+| `vendor/yjs.js`           | Bundled Yjs, y-indexeddb, y-webrtc, qrcode-generator. `npm run vendor`; commit it |
+| `vendor-src/entry.js`     | Input for the vendor bundle                                                       |
+| `css/style.css`           | All styles                                                                        |
 
 ### Tests
 
@@ -93,8 +114,10 @@ No build step. Serve with any static HTTP server (`web-frontend/start-server.sh`
 npm test      # node --test web-frontend/js/*.test.cjs
 ```
 
-Node 18+. `yjs` is a dev dependency so the tests run against a real in-memory
-`Y.Doc`. App tests load the browser scripts into a `vm` context with hand-built DOM
+Node 18+. `yjs` and `y-webrtc` are dev dependencies so the tests run against a real in-memory
+`Y.Doc`. `sync.test.cjs` starts two devices in worker threads (y-webrtc keeps one room table per
+realm) that sync over BroadcastChannel with the real encryption and protocol; WebRTC itself
+needs a browser and is only checked by hand. App tests load the browser scripts into a `vm` context with hand-built DOM
 fakes; no jsdom.
 
 ## Supabase (retired)
