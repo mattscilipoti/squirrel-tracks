@@ -472,6 +472,7 @@ class GridTaskTracker {
     this.updateTimeCalculations();
     this.saveToLocalStorage();
     this.cloudWriteFailed = false;
+    this.clearSyncProblem();
     this.recordSyncSuccess();
   }
 
@@ -851,6 +852,8 @@ class GridTaskTracker {
         alert(
           'A task with this name already exists. Choose it from "Reuse a task..." instead.',
         );
+      } else {
+        this.markCloudWriteFailed();
       }
     }
   }
@@ -973,6 +976,7 @@ class GridTaskTracker {
       console.log("Task removed from this session:", taskId);
     } catch (error) {
       console.error("Failed to delete task from Supabase:", error);
+      this.markCloudWriteFailed();
     }
   }
 
@@ -1420,8 +1424,8 @@ class GridTaskTracker {
           bubble.classList.add("filled");
         }
 
-        bubble.addEventListener("click", () => {
-          this.toggleInterval(intervalIdx, taskIdx);
+        bubble.addEventListener("click", (event) => {
+          this.handleIntervalClick(intervalIdx, taskIdx, event.shiftKey);
         });
 
         bubble.addEventListener("dblclick", (e) => {
@@ -1444,9 +1448,44 @@ class GridTaskTracker {
     this.updateTaskPicker();
   }
 
-  /**
-   * Toggle interval for a task (can have multiple tasks per interval)
-   */
+  handleIntervalClick(intervalIdx, taskIdx, shiftKey) {
+    const row = this.gridData[taskIdx];
+    const anchor = this.intervalClickAnchor;
+    if (
+      shiftKey &&
+      anchor?.row === row &&
+      anchor.date === this.date &&
+      anchor.sessionId === this.sessionId
+    ) {
+      const start = Math.min(anchor.intervalIdx, intervalIdx);
+      const end = Math.max(anchor.intervalIdx, intervalIdx);
+      const changed = [];
+      for (let index = start; index <= end; index++) {
+        if (!row[index]) {
+          row[index] = true;
+          changed.push(index);
+        }
+      }
+      if (!changed.length) return;
+      this.renderGrid();
+      this.updateSummary();
+      for (const index of changed) {
+        if (this.sessionId) {
+          this.queueIntervalSync(index, taskIdx, true);
+        }
+      }
+      return;
+    }
+
+    this.toggleInterval(intervalIdx, taskIdx);
+    this.intervalClickAnchor = {
+      row,
+      date: this.date,
+      sessionId: this.sessionId,
+      intervalIdx,
+    };
+  }
+
   toggleInterval(intervalIdx, taskIdx) {
     this.gridData[taskIdx][intervalIdx] = !this.gridData[taskIdx][intervalIdx];
     this.renderGrid();
@@ -1455,14 +1494,24 @@ class GridTaskTracker {
 
     // Sync to Supabase asynchronously
     if (this.sessionId) {
-      this.trackPendingWrite(
-        this.syncIntervalToSupabase(
-          intervalIdx,
-          taskIdx,
-          this.gridData[taskIdx][intervalIdx],
-        ),
-      );
+      this.queueIntervalSync(intervalIdx, taskIdx, this.gridData[taskIdx][intervalIdx]);
     }
+  }
+
+  queueIntervalSync(intervalIdx, taskIdx, isFilled) {
+    this.intervalWrites ||= new Map();
+    const key = JSON.stringify([this.sessionId, this.getTaskId(taskIdx), intervalIdx]);
+    const write = this.syncIntervalToSupabase(
+      intervalIdx,
+      taskIdx,
+      isFilled,
+      this.intervalWrites.get(key),
+    );
+    this.intervalWrites.set(key, write);
+    write.finally(() => {
+      if (this.intervalWrites.get(key) === write) this.intervalWrites.delete(key);
+    });
+    this.trackPendingWrite(write);
   }
 
   trackPendingWrite(write) {
@@ -1557,14 +1606,25 @@ class GridTaskTracker {
       this.updateActivitySummary();
       this.memo = document.getElementById("memoInput")?.value || "";
       this.notes = document.getElementById("notesInput")?.value || "";
-      await this.db.updateSession(this.sessionId, {
+      const sessionData = {
         start_time: this.startTime || null,
         memo: this.memo || null,
         date: this.date,
         notes: this.notes || null,
-      });
+      };
+      const updated = await this.db.updateSession(this.sessionId, sessionData);
 
-      const session = await this.db.getSession(this.sessionId);
+      let session;
+      if (Array.isArray(updated) && updated.length === 0) {
+        // The day was deleted in the cloud; recreate it from this device's copy.
+        const result = await this.db.createSession({ status: "active", ...sessionData });
+        const created = result?.[0] || result;
+        if (!created?.id) throw new Error("Could not recreate this day in the cloud.");
+        this.sessionId = created.id;
+        session = { ...created, tasks: [] };
+      } else {
+        session = await this.db.getSession(this.sessionId);
+      }
       if (!session) throw new Error("The Supabase session could not be loaded.");
 
       const remoteTasks = session.tasks || [];
@@ -1679,8 +1739,9 @@ class GridTaskTracker {
   /**
    * Sync interval toggle to Supabase
    */
-  async syncIntervalToSupabase(intervalIdx, taskIdx, isFilled) {
+  async syncIntervalToSupabase(intervalIdx, taskIdx, isFilled, previousWrite) {
     if (!this.isCloudReady() || !this.sessionId) return;
+    const sessionId = this.sessionId;
     const taskName = this.tasks[taskIdx];
     const taskId = this.getTaskId(taskIdx);
 
@@ -1690,12 +1751,13 @@ class GridTaskTracker {
     }
 
     try {
+      if (previousWrite) await previousWrite;
       if (isFilled) {
         // Create interval entry
-        await this.db.createInterval(this.sessionId, taskId, intervalIdx);
+        await this.db.createInterval(sessionId, taskId, intervalIdx);
       } else {
         // Delete interval entry
-        await this.db.deleteInterval(this.sessionId, taskId, intervalIdx);
+        await this.db.deleteInterval(sessionId, taskId, intervalIdx);
       }
       this.recordSyncSuccess();
       console.log(
@@ -1703,7 +1765,7 @@ class GridTaskTracker {
       );
     } catch (error) {
       console.error("Failed to sync interval to Supabase:", error);
-      this.cloudWriteFailed = true;
+      this.markCloudWriteFailed();
     }
   }
 
@@ -2107,7 +2169,14 @@ class GridTaskTracker {
         notes: this.notes || null,
       };
 
-      await this.db.updateSession(this.sessionId, sessionData);
+      const updated = await this.db.updateSession(this.sessionId, sessionData);
+      if (Array.isArray(updated) && updated.length === 0) {
+        this.reportSyncProblem(
+          "session-missing",
+          "This day no longer exists in the cloud (it may have been deleted on another device), so changes made here are not being saved.",
+        );
+        return;
+      }
       this.recordSyncSuccess();
       console.log("Session synced to Supabase at", this.lastSyncTime);
     } catch (error) {
@@ -2266,7 +2335,13 @@ class GridTaskTracker {
         this.remoteRefreshAgain = true;
         return;
       }
-      if (!session) return;
+      if (!session) {
+        this.reportSyncProblem(
+          "session-missing",
+          "This day no longer exists in the cloud (it may have been deleted on another device), so changes made here are not being saved.",
+        );
+        return;
+      }
       const changes = RemoteChanges.diff(before, {
         memo: session.memo,
         notes: session.notes,
@@ -2279,10 +2354,10 @@ class GridTaskTracker {
         return;
       }
       if (this.cloudWriteFailed) {
-        this.showRemoteNotice("Changed on another device", [
-          "This device has edits that did not reach the cloud, so nothing was applied.",
-          "Use Sync & Reload to keep this device's version, or Refresh from DB to take the cloud's.",
-        ]);
+        this.reportSyncProblem(
+          "unsynced",
+          "Another device changed this day, but some changes on this device never reached the cloud, so nothing was applied.",
+        );
         return;
       }
       const memoInput = document.getElementById("memoInput");
@@ -2307,12 +2382,13 @@ class GridTaskTracker {
     }
   }
 
-  showRemoteNotice(title, lines, maxLines = 6) {
+  showRemoteNotice(title, lines, { problem = false } = {}) {
     const notice = document.getElementById("remoteChangeNotice");
     if (!notice) return;
     document.getElementById("remoteChangeTitle").textContent = title;
     const list = document.getElementById("remoteChangeList");
     list.replaceChildren();
+    const maxLines = 6;
     const shown = lines.slice(0, maxLines);
     if (lines.length > maxLines) shown.push(`\u2026and ${lines.length - maxLines} more`);
     for (const line of shown) {
@@ -2320,9 +2396,47 @@ class GridTaskTracker {
       item.textContent = line;
       list.appendChild(item);
     }
+    notice.classList.toggle("remote-notice-problem", problem);
+    notice.setAttribute("role", problem ? "alert" : "status");
     notice.hidden = false;
     clearTimeout(this.remoteNoticeTimer);
-    this.remoteNoticeTimer = setTimeout(() => (notice.hidden = true), 20000);
+    // Problems stay until resolved or dismissed; change summaries fade away.
+    if (!problem)
+      this.remoteNoticeTimer = setTimeout(() => (notice.hidden = true), 20000);
+  }
+
+  /**
+   * Tell the user the cloud copy and this device may disagree in a way the app
+   * cannot resolve itself. The first problem stays until cleared, so repeated
+   * failures do not stack or re-nag. Resolution is always the Advanced buttons.
+   */
+  reportSyncProblem(key, reason) {
+    if (this.syncProblemKey) return;
+    this.syncProblemKey = key;
+    this.showRemoteNotice(
+      "Sync problem",
+      [
+        reason,
+        "Open Advanced and choose Sync & Reload to keep this device's data, or Refresh from DB to use the cloud's copy.",
+      ],
+      { problem: true },
+    );
+  }
+
+  clearSyncProblem() {
+    if (!this.syncProblemKey) return;
+    this.syncProblemKey = null;
+    const notice = document.getElementById("remoteChangeNotice");
+    if (notice?.classList.contains("remote-notice-problem")) notice.hidden = true;
+  }
+
+  /** A write to the cloud was rejected, so this device may hold unsaved changes. */
+  markCloudWriteFailed() {
+    this.cloudWriteFailed = true;
+    this.reportSyncProblem(
+      "unsynced",
+      "Some changes on this device did not reach the cloud.",
+    );
   }
 
   disableSupabase() {

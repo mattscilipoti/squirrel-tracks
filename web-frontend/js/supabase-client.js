@@ -328,7 +328,12 @@ class SupabaseClient {
   }
 
   async updateSession(sessionId, data) {
-    return this.request("PATCH", `/sessions?id=eq.${sessionId}`, data);
+    return this.request(
+      "PATCH",
+      `/sessions?id=eq.${sessionId}`,
+      data,
+      "return=representation",
+    );
   }
 
   async deleteSession(sessionId) {

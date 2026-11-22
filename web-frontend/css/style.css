@@ -659,6 +659,11 @@ header a:hover {
   font-size: 0.9rem;
 }
 
+.remote-notice-problem {
+  background: #fdecea;
+  border-color: #e08a8a;
+}
+
 .remote-notice[hidden] {
   display: none;
 }

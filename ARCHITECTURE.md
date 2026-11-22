@@ -29,8 +29,14 @@ to upload, load, merge, or cancel.
 short debounce and once local writes have settled, `GridTaskTracker.refreshFromRemoteChange`
 re-reads the selected day, diffs it against local state with `RemoteChanges.diff`,
 applies any differences, and shows a summary notice. Own writes produce an empty diff and
-no message. If a local write failed to sync (`cloudWriteFailed`), remote changes are not
-applied and the notice says so.
+no message.
+
+Problems the app cannot resolve (a failed write sets `cloudWriteFailed`; a missing
+session is detected by a change signal or by the 30-second session update matching no
+rows) go through `reportSyncProblem`: a sticky "Sync problem" notice that stays until
+`loadSessionFromSupabase` succeeds. While `cloudWriteFailed` is set, remote changes are not
+applied. The notice points to the Advanced buttons: Sync & Reload (keep this device;
+recreates a deleted session) or Refresh from DB (take the cloud's copy).
 
 ## Web frontend (`web-frontend/`)
 

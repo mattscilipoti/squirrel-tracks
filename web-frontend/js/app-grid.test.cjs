@@ -1591,9 +1591,11 @@ test("local edits made during the fetch are not overwritten", async () => {
   assert.equal(tracker.rescheduled, 1);
 });
 
-test("unsynced local edits block applying remote changes and explain why", async () => {
+test("unsynced local edits block applying remote changes and point to the Advanced buttons", async () => {
   const { tracker, notices } = remoteFixture();
   tracker.cloudWriteFailed = true;
+  tracker.showRemoteNotice = (title, lines, options) =>
+    notices.push({ title, lines, options });
   tracker.db = {
     getSession: async () => ({
       id: 15,
@@ -1605,6 +1607,221 @@ test("unsynced local edits block applying remote changes and explain why", async
   };
   await tracker.refreshFromRemoteChange();
   assert.equal(tracker.loaded, undefined);
-  assert.equal(notices[0].title, "Changed on another device");
-  assert.match(notices[0].lines.join(" "), /Sync & Reload/);
+  assert.equal(notices[0].title, "Sync problem");
+  assert.equal(notices[0].options.problem, true);
+  assert.match(notices[0].lines.join(" "), /Sync & Reload.*Refresh from DB/);
+});
+
+test("a day deleted in the cloud is reported when a change signal finds no session", async () => {
+  const { tracker, notices } = remoteFixture();
+  tracker.showRemoteNotice = (title, lines) => notices.push({ title, lines });
+  tracker.db = {
+    getSession: async () => null,
+    getSessionIntervals: async () => [],
+  };
+  await tracker.refreshFromRemoteChange();
+  assert.equal(tracker.loaded, undefined);
+  assert.equal(notices[0].title, "Sync problem");
+  assert.match(notices[0].lines[0], /no longer exists in the cloud/);
+});
+
+test("autosync detects a deleted day because its update matches no rows", async () => {
+  const { tracker, notices } = remoteFixture();
+  tracker.showRemoteNotice = (title, lines) => notices.push({ title, lines });
+  tracker.followToday = false;
+  tracker.db = { updateSession: async () => [] };
+  await tracker.syncToSupabase();
+  assert.equal(notices.length, 1);
+  assert.match(notices[0].lines[0], /no longer exists in the cloud/);
+  assert.equal(tracker.isSyncing, false);
+});
+
+test("sync problems are reported once and clear after the cloud copy is loaded", () => {
+  const { tracker, notices } = remoteFixture();
+  tracker.showRemoteNotice = (title, lines) => notices.push({ title, lines });
+  tracker.reportSyncProblem("unsynced", "First problem.");
+  tracker.reportSyncProblem("session-missing", "Second problem.");
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].lines[0], "First problem.");
+  assert.equal(tracker.syncProblemKey, "unsynced");
+  tracker.clearSyncProblem();
+  assert.equal(tracker.syncProblemKey, null);
+  tracker.reportSyncProblem("session-missing", "Second problem.");
+  assert.equal(notices.length, 2);
+});
+
+test("a failed interval write flags the device as having unsynced changes", async () => {
+  const { tracker, notices } = remoteFixture();
+  tracker.showRemoteNotice = (title, lines) => notices.push({ title, lines });
+  tracker.db = {
+    createInterval: async () => {
+      throw new Error("foreign key violation");
+    },
+  };
+  await tracker.syncIntervalToSupabase(3, 0, true);
+  assert.equal(tracker.cloudWriteFailed, true);
+  assert.match(notices[0].lines[0], /did not reach the cloud/);
+});
+
+test("clicking and shift-clicking bubbles fills an inclusive range in the same row", () => {
+  const { context, tracker, storage } = fixture("2026-10-15");
+  function element() {
+    return {
+      children: [],
+      dataset: {},
+      classList: { add() {} },
+      setAttribute() {},
+      appendChild(child) {
+        this.children.push(child);
+      },
+      addEventListener(type, handler) {
+        this[type] = handler;
+      },
+      set innerHTML(value) {
+        if (value === "") this.children = [];
+      },
+    };
+  }
+  const body = element();
+  context.document.createElement = element;
+  const getElementById = context.document.getElementById;
+  context.document.getElementById = (id) =>
+    id === "gridBody" ? body : getElementById(id);
+  tracker.tasks = ["Task", "Other"];
+  tracker.taskIds = [5, 6];
+  tracker.gridData = [Array(96).fill(false), Array(96).fill(false)];
+  tracker.sessionId = null;
+  tracker.updateCurrentTimeLine = () => {};
+  tracker.updateTaskPicker = () => {};
+  tracker.updateActivitySummary = () => {};
+  tracker.updateSummary = () => {};
+  tracker.renderGrid();
+  const click = (row, index, shiftKey = false) =>
+    body.children[row].children[index + 1].children[0].click({ shiftKey });
+
+  click(0, 5);
+  click(0, 2, true);
+  assert.deepEqual(tracker.gridData[0].slice(0, 7), [
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    false,
+  ]);
+  click(0, 7, true);
+  assert.deepEqual(tracker.gridData[0].slice(2, 8), Array(6).fill(true));
+  click(1, 95, true);
+  assert.equal(tracker.gridData[1].filter(Boolean).length, 1);
+  click(1, 93, true);
+  assert.deepEqual(tracker.gridData[1].slice(93), [true, true, true]);
+  assert.deepEqual(JSON.parse(storage.get("ettGridState")).gridData, tracker.gridData);
+
+  tracker.gridData[1] = Array(96).fill(false);
+  tracker.renderGrid();
+  click(1, 90, true);
+  assert.equal(tracker.gridData[1].filter(Boolean).length, 1);
+});
+
+test("range filling waits for a pending removal of its starting bubble", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.sessionId = 15;
+  tracker.taskIds = [5];
+  tracker.gridData = [Array(96).fill(false)];
+  tracker.gridData[0][4] = true;
+  tracker.gridData[0][5] = true;
+  tracker.renderGrid = () => {};
+  tracker.updateSummary = () => {};
+  tracker.saveToLocalStorage = () => {};
+  const writes = [];
+  let finishDelete;
+  tracker.db = {
+    deleteInterval: async (session, task, index) => {
+      writes.push(`delete ${index} started`);
+      await new Promise((resolve) => {
+        finishDelete = resolve;
+      });
+      writes.push(`delete ${index} finished`);
+    },
+    createInterval: async (session, task, index) => writes.push(`create ${index}`),
+  };
+
+  tracker.handleIntervalClick(4, 0, false);
+  tracker.handleIntervalClick(2, 0, true);
+  assert.deepEqual(tracker.gridData[0].slice(2, 6), [true, true, true, true]);
+  assert.deepEqual(writes, ["delete 4 started", "create 2", "create 3"]);
+  finishDelete();
+  await tracker.waitForPendingWrites();
+  assert.deepEqual(writes, [
+    "delete 4 started",
+    "create 2",
+    "create 3",
+    "delete 4 finished",
+    "create 4",
+  ]);
+});
+
+test("clearing a bubble after a range fill waits for its pending creation", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.sessionId = 15;
+  tracker.taskIds = [5];
+  tracker.gridData = [Array(96).fill(false)];
+  tracker.renderGrid = () => {};
+  tracker.updateSummary = () => {};
+  tracker.saveToLocalStorage = () => {};
+  const writes = [];
+  let finishCreate;
+  tracker.db = {
+    createInterval: async (session, task, index) => {
+      writes.push(`create ${index} started`);
+      if (index === 2) {
+        await new Promise((resolve) => {
+          finishCreate = resolve;
+        });
+      }
+      writes.push(`create ${index} finished`);
+    },
+    deleteInterval: async (session, task, index) => writes.push(`delete ${index}`),
+  };
+
+  tracker.handleIntervalClick(1, 0, false);
+  tracker.handleIntervalClick(2, 0, true);
+  tracker.handleIntervalClick(2, 0, false);
+  assert.equal(tracker.gridData[0][2], false);
+  assert.equal(writes.includes("delete 2"), false);
+  finishCreate();
+  await tracker.waitForPendingWrites();
+  assert.ok(writes.indexOf("delete 2") > writes.indexOf("create 2 finished"));
+});
+
+test("Sync & Reload recreates a day that was deleted in the cloud", async () => {
+  const { tracker } = fixture("2026-10-15");
+  tracker.sessionId = 15;
+  tracker.tasks = ["Task"];
+  tracker.taskIds = [5];
+  tracker.taskIdMap = { Task: 5 };
+  tracker.gridData = [[true]];
+  const created = [];
+  const intervals = [];
+  tracker.db = {
+    updateSession: async () => [],
+    createSession: async (data) => {
+      created.push(data);
+      return [{ id: 99, date: data.date }];
+    },
+    getSession: async (id) => ({ id, date: "2026-10-15", tasks: [] }),
+    attachTask: async () => {},
+    getSessionIntervals: async () => [],
+    createInterval: async (session, task, index) =>
+      intervals.push({ session, task, index }),
+  };
+  tracker.loadSessionFromSupabase = async () => {};
+  await tracker.syncAndReloadFromSupabase();
+  assert.equal(created.length, 1);
+  assert.equal(created[0].date, "2026-10-15");
+  assert.equal(tracker.sessionId, 99);
+  assert.deepEqual(JSON.parse(JSON.stringify(intervals)), [
+    { session: 99, task: 5, index: 0 },
+  ]);
 });

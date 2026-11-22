@@ -211,3 +211,19 @@ test("task details and intervals map sessions to dates and keep paging", async (
   ]);
   assert.ok(routes.some((route) => route.startsWith("/intervals?task_id=eq.5&select=")));
 });
+
+test("session updates ask for the updated rows so a deleted day is detectable", async () => {
+  const db = client();
+  const calls = [];
+  db.request = async (method, route, data, prefer) => {
+    calls.push({ method, route, prefer });
+    return [];
+  };
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(await db.updateSession(7, { memo: "x" }))),
+    [],
+  );
+  assert.deepEqual(calls, [
+    { method: "PATCH", route: "/sessions?id=eq.7", prefer: "return=representation" },
+  ]);
+});

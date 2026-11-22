@@ -44,6 +44,10 @@ the footer shows the deployed commit.
 
 ### Web Grid Actions
 
+Click a bubble to toggle it. Shift-click another bubble in the same task row to
+fill the entire range, including both endpoints. A shift-click in a different
+row starts a new selection.
+
 Use Date to switch sessions without relabeling the current day's data. Switching
 keeps a per-day local snapshot; revisiting a day restores that snapshot first,
 or loads its Supabase session when no local snapshot exists. A new day without
@@ -102,9 +106,11 @@ which also makes a rename update the task's last-updated time.
 When another tab or device changes the selected day (bubbles, tasks, renames,
 memo, or notes), this page updates itself and shows a notice listing what changed,
 for example `"Writing": +3 intervals` or `Renamed "A" to "B"`. The notice disappears
-after 20 seconds or when dismissed. If this device has edits that failed to reach
-Supabase, nothing is overwritten; the notice tells you to choose **Sync & Reload**
-(keep this device's data) or **Refresh from DB** (take the cloud's). Apply
+after 20 seconds or when dismissed. If something goes wrong that the app can't fix itself (this device has edits that
+never reached the cloud, or the day was deleted in the cloud), a red **Sync problem**
+notice stays on screen until you resolve it or dismiss it. Open **Advanced** and choose
+**Sync & Reload** to keep this device's data (it recreates a deleted day), or
+**Refresh from DB** to use the cloud's copy. Apply
 [`20261020000000_enable_realtime.sql`](supabase/migrations/20261020000000_enable_realtime.sql)
 first. Live updates need the page to load supabase-js from jsDelivr; without it
 the app works as before, just without live updates.
