@@ -131,6 +131,9 @@ One-time setup, about three minutes:
 4. To add another device, copy the link shown in that dialog and open it on the other device, then
    enter a token there (a token per device is fine; the same one works too). The link carries the
    repository name and the encryption key, never the token.
+   Always add a second device this way. Typing the repository in by hand is refused when the repository
+   already holds another device's data, because the new device would invent a different key and the two
+   could not read each other.
 
 How it behaves:
 

@@ -269,10 +269,49 @@ test("a device with a different key cannot read the data and says so", async () 
   a.store.setCell("2026-11-22", id, 1, true);
   await a.sync.connect({ repo: REPO, token: TOKEN });
   const stranger = device(github);
-  await stranger.sync.connect({ repo: REPO, token: TOKEN }); // new secret of its own
+  stranger.sync.joinFromHash(`#github=${REPO}&secret=${"x".repeat(22)}`); // a different key
+  await stranger.sync.connect({ repo: REPO, token: TOKEN });
   assert.deepEqual(stranger.store.readDay("2026-11-22").tasks, []);
   assert.equal(stranger.sync.status().state, "error");
   assert.match(stranger.sync.status().message, /decrypted/);
+});
+
+test("a new device cannot invent its own key for a repository that already has data", async () => {
+  const github = new FakeGitHub();
+  const a = device(github);
+  a.store.createTask("Writing");
+  await a.sync.connect({ repo: REPO, token: TOKEN });
+  const b = device(github);
+  await assert.rejects(
+    b.sync.connect({ repo: REPO, token: TOKEN }),
+    /already holds data from another device.*sync link/s,
+  );
+  assert.equal(b.sync.settings, null, "nothing was saved, so no mismatched key exists");
+  assert.equal(github.files.size, 1, "and nothing was written to the repository");
+});
+
+test("a device that set up with the wrong key recovers by joining with the right link", async () => {
+  const github = new FakeGitHub();
+  const a = device(github);
+  const b = device(github);
+  const idA = a.store.createTask("From A");
+  a.store.setCell("2026-11-22", idA, 1, true);
+  const idB = b.store.createTask("From B");
+  b.store.setCell("2026-11-22", idB, 2, true);
+  await a.sync.connect({ repo: REPO, token: TOKEN });
+  b.sync.joinFromHash(`#github=${REPO}&secret=${"y".repeat(22)}`); // B went its own way
+  await b.sync.connect({ repo: REPO, token: TOKEN });
+  await a.sync.sync();
+  assert.equal(a.sync.status().state, "error");
+  assert.equal(b.sync.status().state, "error");
+
+  b.sync.disconnect(); // what the user does, then opens A's link
+  await join(a, b);
+  await a.sync.sync();
+  for (const d of [a, b]) {
+    assert.equal(d.sync.status().state, "ok");
+    assert.deepEqual(d.store.readDay("2026-11-22").tasks.sort(), ["From A", "From B"]);
+  }
 });
 
 test("joining from a link keeps the token out of the link and asks for one", async () => {

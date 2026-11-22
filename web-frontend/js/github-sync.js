@@ -24,6 +24,9 @@ class GitHubSyncError extends Error {
 
 class GitHubSync {
   static STORAGE_KEY = "ettGithubSync";
+  // Identifies this browser's file in the repository. Kept when the device disconnects, so
+  // joining again replaces its old file instead of leaving a stray one behind.
+  static DEVICE_KEY = "ettGithubDeviceId";
   static DIR = "devices";
   static PUSH_DELAY_MS = 10000;
   static POLL_MS = 60000;
@@ -113,10 +116,14 @@ class GitHubSync {
       .replaceAll("=", "");
   }
 
-  newDeviceId() {
-    return Array.from(this.randomBytes(8), (b) => b.toString(16).padStart(2, "0")).join(
-      "",
-    );
+  deviceId() {
+    const saved = this.storage.getItem(GitHubSync.DEVICE_KEY);
+    if (/^[0-9a-f]{16}$/.test(saved || "")) return saved;
+    const id = Array.from(this.randomBytes(8), (b) =>
+      b.toString(16).padStart(2, "0"),
+    ).join("");
+    this.storage.setItem(GitHubSync.DEVICE_KEY, id);
+    return id;
   }
 
   /**
@@ -133,13 +140,19 @@ class GitHubSync {
       throw new GitHubSyncError("That does not look like a GitHub access token.");
     const info = await this.verify(repo, token);
     const existing = this.settings;
+    // A device that has no key yet would invent its own, which cannot read the files of a
+    // device that already published with a different one. It must join with that device's link.
+    if (!existing?.secret && (await this.hasDeviceFiles(repo, token)))
+      throw new GitHubSyncError(
+        "This repository already holds data from another device, which this device can't read without that device's sync link. On the other device open Advanced → Sync with GitHub → Copy link, and open that link here. (Or use a new, empty repository.)",
+      );
     this.stop();
     this.resetState();
     this.save({
       repo,
       token,
       secret: existing?.secret || this.newSecret(),
-      deviceId: existing?.deviceId || this.newDeviceId(),
+      deviceId: this.deviceId(),
     });
     await this.start(); // the first round, so problems show up straight away
     return info;
@@ -154,6 +167,19 @@ class GitHubSync {
         'The token can read this repository but not write to it. Give it "Contents: Read and write".',
       );
     return { private: info.private !== false };
+  }
+
+  async hasDeviceFiles(repo, token) {
+    const response = await this.request(
+      "GET",
+      `/repos/${repo}/contents/${GitHubSync.DIR}`,
+      { token },
+    );
+    if (response.status === 404) return false;
+    if (!response.ok) throw this.errorFor(response, "check the repository");
+    return (await response.json()).some(
+      (file) => file.type === "file" && /^[0-9a-f]{16}\.bin$/.test(file.name),
+    );
   }
 
   /** The link another device opens. It carries the repository and key, never the token. */
@@ -179,7 +205,7 @@ class GitHubSync {
       repo,
       secret,
       token: existing?.repo === repo ? existing.token : null,
-      deviceId: existing?.deviceId || this.newDeviceId(),
+      deviceId: this.deviceId(),
     });
     return true;
   }
@@ -344,6 +370,9 @@ class GitHubSync {
       this.known.set(file.name, file.sha);
       changed = true;
     }
+    // Our own file is ours to replace: if we cannot read it, it was written under another
+    // key (this device set up on its own before joining with the right link), so republish.
+    if (this.undecryptable.delete(`${deviceId}.bin`)) this.dirty = true;
     return changed;
   }
 
@@ -462,12 +491,13 @@ class GitHubSync {
       return this.error.kind === "network"
         ? { state: "offline", message: this.error.message }
         : { state: "error", message: this.error.message };
-    if (this.undecryptable.size)
+    if (this.undecryptable.size) {
+      const names = [...this.undecryptable].slice(0, 3).join(", ");
       return {
         state: "error",
-        message:
-          "Another device's data could not be decrypted: the encryption key differs. Open the link from your first device again.",
+        message: `Data from another device could not be decrypted (${names}): its encryption key differs. Open the sync link from your first device here. If that device is gone, delete the file in the repository on GitHub.`,
       };
+    }
     if (this.busy || !this.lastSuccess)
       return { state: "syncing", message: "Syncing with GitHub…" };
     return { state: "ok", message: "Synced with GitHub" };
