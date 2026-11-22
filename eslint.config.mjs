@@ -32,6 +32,7 @@ export default [
         SupabaseClient: "readonly",
         GridTaskTracker: "readonly",
         RealtimeWatcher: "readonly",
+        DataStore: "readonly",
         RemoteChanges: "readonly",
         supabase: "readonly",
         TimeCalculations: "readonly",
