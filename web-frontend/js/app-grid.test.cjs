@@ -849,3 +849,115 @@ test("the pairing dialog lists sync details", () => {
     "0",
   ]);
 });
+
+function fakeGithub(overrides = {}) {
+  return {
+    state: "off",
+    message: "",
+    settings: null,
+    lastSuccess: null,
+    calls: [],
+    onChange() {},
+    status() {
+      return { state: this.state, message: this.message };
+    },
+    async connect(details) {
+      this.calls.push(["connect", details]);
+      if (this.failWith) throw new Error(this.failWith);
+      return { private: this.isPrivate ?? true };
+    },
+    disconnect() {
+      this.calls.push(["disconnect"]);
+    },
+    ...overrides,
+  };
+}
+
+test("footer status puts GitHub problems first, then live peers, then GitHub's state", () => {
+  const { tracker, elements } = fixture("2026-10-15");
+  const github = fakeGithub();
+  tracker.github = github;
+  const show = () => {
+    tracker.renderSyncStatus();
+    return [elements.syncStatus.dataset.state, elements.syncStatusText.textContent];
+  };
+  assert.deepEqual(show(), ["local-only", "Saved on this device"]);
+
+  github.state = "needs-token";
+  github.message = "Enter your GitHub access token to start syncing.";
+  assert.equal(show()[0], "needs-token");
+
+  github.state = "syncing";
+  github.message = "Syncing with GitHub…";
+  assert.deepEqual(show(), ["syncing", "Syncing with GitHub…"]);
+
+  github.state = "ok";
+  github.message = "Synced with GitHub";
+  assert.deepEqual(show(), ["synced", "Synced with GitHub"]);
+
+  github.state = "error";
+  github.message = "GitHub rejected the access token (wrong, expired or revoked).";
+  assert.deepEqual(show(), ["error", github.message]);
+
+  github.state = "offline";
+  assert.equal(show()[0], "offline");
+
+  github.state = "ok";
+  github.message = "Synced with GitHub";
+  tracker.sync = fakeSync({ peerCount: 2 }).sync;
+  assert.equal(
+    show()[1],
+    "Syncing with 2 other devices",
+    "live peers win over GitHub's ok",
+  );
+});
+
+test("connecting to GitHub passes the form values on and clears the token field", async () => {
+  const { tracker, elements } = fixture("2026-10-15");
+  const github = fakeGithub({ isPrivate: false });
+  tracker.github = github;
+  elements.githubRepo = { value: "me/data" };
+  elements.githubToken = { value: "github_pat_secret" };
+  elements.githubError = { hidden: true };
+  elements.githubSaveBtn = { disabled: false };
+  await tracker.connectGithub();
+  assert.deepEqual(github.calls, [
+    ["connect", { repo: "me/data", token: "github_pat_secret" }],
+  ]);
+  assert.equal(elements.githubToken.value, "", "the token is not left in the page");
+  assert.equal(elements.githubError.hidden, true);
+  assert.equal(elements.githubSaveBtn.disabled, false);
+  assert.equal(tracker.githubPublic, true, "a public repository is flagged");
+});
+
+test("a failed GitHub connection shows the reason and keeps the form usable", async () => {
+  const { tracker, elements } = fixture("2026-10-15");
+  tracker.github = fakeGithub({
+    failWith: "Repository not found, or the token has no access to it.",
+  });
+  elements.githubRepo = { value: "me/missing" };
+  elements.githubToken = { value: "github_pat_secret" };
+  elements.githubError = { hidden: true };
+  elements.githubSaveBtn = { disabled: false };
+  await tracker.connectGithub();
+  assert.equal(elements.githubError.hidden, false);
+  assert.match(elements.githubError.textContent, /Repository not found/);
+  assert.equal(elements.githubSaveBtn.disabled, false);
+  assert.equal(
+    elements.githubToken.value,
+    "github_pat_secret",
+    "kept so it can be corrected",
+  );
+});
+
+test("disconnecting from GitHub asks first", () => {
+  const declined = fixture("2026-10-15", { confirm: () => false });
+  declined.tracker.github = fakeGithub();
+  declined.tracker.disconnectGithub();
+  assert.deepEqual(declined.tracker.github.calls, []);
+
+  const accepted = fixture("2026-10-15", { confirm: () => true });
+  accepted.tracker.github = fakeGithub();
+  accepted.tracker.disconnectGithub();
+  assert.deepEqual(accepted.tracker.github.calls, [["disconnect"]]);
+});

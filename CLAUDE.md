@@ -27,10 +27,10 @@ npm run vendor                             # rebuild web-frontend/vendor/yjs.js 
 ## Architecture
 
 - Scripts load as classic `<script>` tags in order from `index.html`: `version.js`,
-  `remote-changes.js`, `time-calculations.js`, `store.js`, `sync.js`, `app-grid.js`. They share
+  `remote-changes.js`, `time-calculations.js`, `store.js`, `sync.js`, `github-sync.js`, `app-grid.js`. They share
   top-level globals; when adding a cross-file global, also declare it in
   `eslint.config.mjs`. The one module script in `index.html` imports the vendored
-  `vendor/yjs.js`, opens the store, starts `PeerSync` (joining from `#pair=`), and dispatches
+  `vendor/yjs.js`, opens the store, starts `PeerSync` and `GitHubSync` (joining from `#pair=` / `#github=`), and dispatches
   `app-store-ready`; `app-grid.js` creates the tracker from that event.
 - `store.js` (`DataStore`) is the only code that touches Yjs. Its collections are **flat**
   `Y.Map`s keyed by `date|taskId|slot` etc. Never nest shared types: concurrent creation
@@ -43,7 +43,10 @@ npm run vendor                             # rebuild web-frontend/vendor/yjs.js 
   `store.onRemoteChange` -> `refreshFromRemoteChange`, which uses `RemoteChanges.diff`.
 - Per-device state (selected date, reminder settings, the pairing secret) stays in localStorage;
   the shared data does not. Never put the pairing secret in the shared document.
-- `sync.js` (`PeerSync`) pairs devices over y-webrtc. `sync.test.cjs` runs two devices in
+- `github-sync.js` (`GitHubSync`) is the main sync: one AES-GCM-encrypted file per device in a private
+  repo, via the GitHub contents API (fetch is injected; see `FakeGitHub` in its test). Keep the token
+  out of links, logs and the shared document; the secret goes in the link fragment only.
+- `sync.js` (`PeerSync`) is optional live pairing over y-webrtc. `sync.test.cjs` runs two devices in
   worker threads (y-webrtc allows one doc per room per realm); don't call `provider.destroy()`
   without `awareness.destroy()` (see `PeerSync.stop`).
 - Tasks are reusable across days and identified by UUID; names are unique

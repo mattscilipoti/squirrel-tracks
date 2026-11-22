@@ -5,9 +5,10 @@
  * the selected day in memory for rendering and writes every edit through to the store.
  */
 class GridTaskTracker {
-  constructor(store, sync = null) {
+  constructor(store, sync = null, github = null) {
     this.store = store;
     this.sync = sync;
+    this.github = github;
     const storedSyncTime = localStorage.getItem("ettLastSyncTime");
     this.lastSyncTime =
       storedSyncTime && !Number.isNaN(Date.parse(storedSyncTime)) ? storedSyncTime : null;
@@ -51,6 +52,11 @@ class GridTaskTracker {
     this.sync?.onChange(() => {
       this.renderSyncStatus();
       this.renderPairDialog();
+    });
+    this.github?.onChange(() => {
+      if (this.github.lastSuccess) this.recordSyncTime(this.github.lastSuccess);
+      else this.renderSyncStatus();
+      this.renderGithubDialog();
     });
     window.addEventListener?.("online", () => this.renderSyncStatus());
     window.addEventListener?.("offline", () => this.renderSyncStatus());
@@ -100,7 +106,28 @@ class GridTaskTracker {
     }
   }
 
+  /** Footer status: GitHub problems first, then live peers, then GitHub's own state. */
   syncStatusInfo() {
+    const github = this.github?.status();
+    const peers = this.sync?.isPaired() ? this.sync.peerCount : 0;
+    if (github?.state === "error")
+      return { state: "error", icon: "⚠", message: github.message };
+    if (github?.state === "needs-token")
+      return { state: "needs-token", icon: "⚠", message: github.message };
+    if (peers > 0 || !github || github.state === "off") return this.peerStatusInfo();
+    if (github.state === "offline")
+      return {
+        state: "offline",
+        icon: "⚠",
+        message: "Offline: changes will sync when reconnected",
+      };
+    if (github.state === "syncing")
+      return { state: "syncing", icon: "↻", message: github.message };
+    return { state: "synced", icon: "✓", message: github.message };
+  }
+
+  /** Status of live device-to-device pairing alone. */
+  peerStatusInfo() {
     if (!this.sync?.isPaired())
       return { state: "local-only", icon: "✓", message: "Saved on this device" };
     if (globalThis.navigator?.onLine === false)
@@ -128,7 +155,7 @@ class GridTaskTracker {
       return {
         state: "error",
         icon: "⚠",
-        message: "Can't reach the signaling server: check its address in Pair devices",
+        message: "Can't reach the signaling server: check its address in Live pairing",
       };
     return {
       state: "waiting",
@@ -142,6 +169,91 @@ class GridTaskTracker {
     this.lastSyncTime = now.toISOString();
     localStorage.setItem("ettLastSyncTime", this.lastSyncTime);
     this.renderSyncStatus();
+  }
+
+  // ── GitHub sync dialog ──────────────────────────────────────────────────────
+
+  openGithubDialog() {
+    document.getElementById("githubModal").classList.remove("hidden");
+    this.renderGithubDialog();
+  }
+
+  closeGithubDialog() {
+    document.getElementById("githubModal").classList.add("hidden");
+    document.getElementById("githubToken").value = "";
+  }
+
+  renderGithubDialog() {
+    const dialog = document.getElementById("githubModal");
+    if (!dialog || dialog.classList.contains("hidden") || !this.github) return;
+    const settings = this.github.settings;
+    const connected = Boolean(settings?.token);
+    document.getElementById("githubSetup").hidden = connected;
+    document.getElementById("githubConnected").hidden = !connected;
+    document.getElementById("githubPublicWarning").hidden = !this.githubPublic;
+    document.getElementById("githubJoinNote").hidden = !(settings && !settings.token);
+    if (!connected) {
+      const repoInput = document.getElementById("githubRepo");
+      if (settings && !repoInput.value) repoInput.value = settings.repo;
+      return;
+    }
+    document.getElementById("githubRepoName").textContent = settings.repo;
+    document.getElementById("githubStatus").textContent = this.github.status().message;
+    const last = this.github.lastSuccess;
+    document.getElementById("githubLastSync").textContent = last
+      ? `Last synced ${last.toLocaleString()}`
+      : "Not synced yet";
+    document.getElementById("githubLink").value =
+      this.github.link(`${location.origin}${location.pathname}`) || "";
+  }
+
+  async connectGithub() {
+    const error = document.getElementById("githubError");
+    const button = document.getElementById("githubSaveBtn");
+    const token = document.getElementById("githubToken");
+    error.hidden = true;
+    button.disabled = true;
+    try {
+      const result = await this.github.connect({
+        repo: document.getElementById("githubRepo").value,
+        token: token.value,
+      });
+      this.githubPublic = !result.private;
+      token.value = "";
+    } catch (problem) {
+      error.textContent = problem.message || "Could not connect to GitHub.";
+      error.hidden = false;
+    } finally {
+      button.disabled = false;
+      this.renderSyncStatus();
+      this.renderGithubDialog();
+    }
+  }
+
+  async copyGithubLink() {
+    const input = document.getElementById("githubLink");
+    try {
+      await navigator.clipboard.writeText(input.value);
+    } catch {
+      input.select();
+    }
+  }
+
+  async githubSyncNow() {
+    await this.github.sync();
+  }
+
+  disconnectGithub() {
+    if (
+      !confirm(
+        "Disconnect this device from GitHub? Your data stays here, but it will stop syncing. The repository and other devices are not changed.",
+      )
+    )
+      return;
+    this.github.disconnect();
+    this.githubPublic = false;
+    this.renderSyncStatus();
+    this.renderGithubDialog();
   }
 
   // ── Pairing dialog ──────────────────────────────────────────────────────────
@@ -172,7 +284,7 @@ class GridTaskTracker {
       linkInput.value = link;
       this.renderPairQr(link);
     }
-    document.getElementById("pairStatus").textContent = this.syncStatusInfo().message;
+    document.getElementById("pairStatus").textContent = this.peerStatusInfo().message;
     const signalingInput = document.getElementById("pairSignaling");
     if (document.activeElement !== signalingInput)
       signalingInput.value = this.sync.pairing.signaling?.join(", ") || "";
@@ -473,6 +585,26 @@ class GridTaskTracker {
         alert(`Could not import ${file.name}: ${error.message || "Unknown error"}`);
       }
     });
+
+    // GitHub sync
+    document
+      .getElementById("githubBtn")
+      .addEventListener("click", () => this.openGithubDialog());
+    document
+      .getElementById("githubCloseBtn")
+      .addEventListener("click", () => this.closeGithubDialog());
+    document
+      .getElementById("githubSaveBtn")
+      .addEventListener("click", () => this.connectGithub());
+    document
+      .getElementById("githubCopyBtn")
+      .addEventListener("click", () => this.copyGithubLink());
+    document
+      .getElementById("githubSyncNowBtn")
+      .addEventListener("click", () => this.githubSyncNow());
+    document
+      .getElementById("githubDisconnectBtn")
+      .addEventListener("click", () => this.disconnectGithub());
 
     // Pairing
     document
@@ -1453,5 +1585,11 @@ class GridTaskTracker {
  * Start the tracker once the page has opened the data store (see index.html).
  */
 window.addEventListener?.("app-store-ready", (event) => {
-  window.tracker = new GridTaskTracker(event.detail.store, event.detail.sync);
+  window.tracker = new GridTaskTracker(
+    event.detail.store,
+    event.detail.sync,
+    event.detail.github,
+  );
+  // Arrived from a sync link: ask for this device's token straight away.
+  if (window.tracker.github?.needsToken()) window.tracker.openGithubDialog();
 });

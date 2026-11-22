@@ -7,6 +7,116 @@
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
+    <div id="githubModal" class="modal hidden">
+      <div
+        class="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="githubTitle"
+      >
+        <h2 id="githubTitle">Sync with GitHub</h2>
+        <p>
+          Your data is encrypted on this device and saved as small files in a private
+          GitHub repository of yours. GitHub only ever sees scrambled data. Your devices
+          sync even if they are never open at the same time.
+        </p>
+        <p id="githubJoinNote" class="help-text" hidden>
+          You opened a sync link. Enter an access token for this device to finish; the
+          repository and encryption key came with the link.
+        </p>
+        <div id="githubSetup">
+          <details>
+            <summary>First-time setup (about 3 minutes)</summary>
+            <ol class="help-text">
+              <li>
+                On github.com, create a new <strong>private</strong> repository (for
+                example <code>squirrel-tracks-data</code>) and tick
+                <strong>Add a README file</strong>.
+              </li>
+              <li>
+                Go to Settings → Developer settings → Personal access tokens →
+                <strong>Fine-grained tokens</strong> → Generate new token.
+              </li>
+              <li>
+                Under <strong>Repository access</strong> choose
+                <strong>Only select repositories</strong> and pick that repository.
+              </li>
+              <li>
+                Under <strong>Permissions → Repository permissions</strong> set
+                <strong>Contents</strong> to <strong>Read and write</strong>. Nothing else
+                is needed. Pick an expiry you are comfortable renewing.
+              </li>
+              <li>
+                Copy the token (shown once) and paste it below with the repository name.
+              </li>
+            </ol>
+          </details>
+          <label>
+            Repository
+            <input
+              id="githubRepo"
+              type="text"
+              placeholder="your-name/squirrel-tracks-data"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <label>
+            Access token (stays on this device)
+            <input
+              id="githubToken"
+              type="password"
+              placeholder="github_pat_…"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </label>
+          <p id="githubError" class="setup-error" role="alert" hidden></p>
+          <div class="modal-buttons">
+            <button id="githubSaveBtn" type="button" class="btn btn-primary">
+              Connect
+            </button>
+          </div>
+        </div>
+        <div id="githubConnected" hidden>
+          <p>Repository: <strong id="githubRepoName"></strong></p>
+          <p id="githubStatus" role="status"></p>
+          <p id="githubLastSync" class="help-text"></p>
+          <p id="githubPublicWarning" class="setup-error" hidden>
+            This repository is public. Your data is encrypted, but a private repository is
+            strongly recommended.
+          </p>
+          <p>
+            To add another device, open this link on it and enter a token there. The link
+            carries the repository and encryption key, never the token. Keep it private.
+          </p>
+          <input
+            id="githubLink"
+            class="pair-link"
+            type="text"
+            readonly
+            aria-label="Link for your other devices"
+          />
+          <div class="modal-buttons">
+            <button id="githubCopyBtn" type="button" class="btn btn-secondary">
+              Copy link
+            </button>
+            <button id="githubSyncNowBtn" type="button" class="btn btn-secondary">
+              Sync now
+            </button>
+            <button id="githubDisconnectBtn" type="button" class="btn btn-danger">
+              Disconnect this device
+            </button>
+          </div>
+        </div>
+        <div class="modal-buttons">
+          <button id="githubCloseBtn" type="button" class="btn btn-tertiary">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div id="pairModal" class="modal hidden">
       <div
         class="modal-content"
@@ -14,7 +124,7 @@
         aria-modal="true"
         aria-labelledby="pairTitle"
       >
-        <h2 id="pairTitle">Pair devices</h2>
+        <h2 id="pairTitle">Live pairing (advanced)</h2>
         <div id="pairUnpaired">
           <p>
             Pairing keeps this device and your others in sync, directly between them, with
@@ -311,11 +421,18 @@
                   Export CSV
                 </button>
                 <button
+                  id="githubBtn"
+                  class="btn btn-secondary"
+                  title="Sync this device with your others through a private GitHub repository."
+                >
+                  Sync with GitHub
+                </button>
+                <button
                   id="pairBtn"
                   class="btn btn-secondary"
-                  title="Sync this device with your other devices, directly between them."
+                  title="Advanced: live sync directly between devices that are open together. Needs a signaling server."
                 >
-                  Pair devices
+                  Live pairing
                 </button>
                 <button
                   id="exportBackupBtn"
@@ -471,6 +588,7 @@
     <script src="js/time-calculations.js"></script>
     <script src="js/store.js"></script>
     <script src="js/sync.js"></script>
+    <script src="js/github-sync.js"></script>
     <script src="js/app-grid.js"></script>
     <script>
       // Startup problems must be visible: without this the page would just sit there.
@@ -521,13 +639,17 @@
         if (store.isEmpty()) store.importLegacyStorage(localStorage);
         // Ask the browser not to evict our data under storage pressure.
         navigator.storage?.persist?.();
-        // Join a pairing from a link (#pair=...), then resume any saved pairing.
+        // Join from a link (#pair=... or #github=...), then resume anything saved.
         const sync = new PeerSync({ WebrtcProvider, doc, storage: localStorage });
-        if (sync.joinFromHash(location.hash))
+        const github = new GitHubSync({ Y, doc, storage: localStorage });
+        const joinedPeers = sync.joinFromHash(location.hash);
+        const joinedGithub = !joinedPeers && github.joinFromHash(location.hash);
+        if (joinedPeers || joinedGithub)
           history.replaceState(null, "", location.pathname + location.search);
-        else sync.start();
+        if (!joinedPeers) sync.start();
+        github.start();
         window.dispatchEvent(
-          new CustomEvent("app-store-ready", { detail: { store, sync } }),
+          new CustomEvent("app-store-ready", { detail: { store, sync, github } }),
         );
         // A "taking a long time" notice is moot once we have started.
         const banner = document.getElementById("appError");

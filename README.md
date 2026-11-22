@@ -8,7 +8,7 @@ Where does all my time go?
 This is a digital version of that [Emergent Task Timing](https://davidseah.com/2006/04/the-printable-ceo-iii-emergent-task-timing/), with 15-minute interval tracking, for noticing where your day goes. Track tasks in 15-minute bubbles and use a gentle, adjustable reminder to check in throughout the day.
 
 **Tech Stack**: Plain HTML/CSS/JS in the browser, no build step and no server. Data is stored on your device ([Yjs](https://yjs.dev) in IndexedDB), so it works offline and belongs to you.
-**Status**: Web app live on GitHub Pages. Local-first: no account and no cloud service. Devices sync directly with each other (WebRTC, end-to-end encrypted) once paired, and you can also move data by exporting a backup and importing it elsewhere (merging, never overwriting). The Rails API and iOS app in this repo are early experiments and are not in use.
+**Status**: Web app live on GitHub Pages. Local-first: no account and no cloud service of ours. Your devices sync end-to-end encrypted through a private GitHub repository of yours (or live, directly between devices), and you can also move data by exporting a backup and importing it elsewhere (merging, never overwriting). The Rails API and iOS app in this repo are early experiments and are not in use.
 
 ---
 
@@ -74,19 +74,20 @@ warning. **Today** returns to the current day and removes the warning. Editing,
 clearing, and export apply to the selected day. The now-line
 and Current Slot appear only for today. Reminder timing does not change.
 
-Add stays visible beside the task input. Clear Grid, Export CSV, Pair devices, Back up, and Import are in the
+Add stays visible beside the task input. Clear Grid, Export CSV, Sync with GitHub, Live pairing, Back up, and Import are in the
 collapsed **Advanced** section in the same toolbar. Expand Advanced
 to access these actions; existing confirmations and tooltips remain in place.
 
-| Action                | Purpose                                                                                                                                                 |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add                   | Add a task row to the selected day. Enter in the task field also adds it.                                                                               |
-| Clear Grid            | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes.                                                                  |
-| Export CSV            | Download task totals and activity summaries for the selected day.                                                                                       |
-| Pair devices          | Create a pairing link / QR code to sync this device with your others, or see sync status and unpair. See [Syncing your devices](#syncing-your-devices). |
-| Back up               | Download all days and tasks as an `.ettbackup` file.                                                                                                    |
-| Import                | Merge an `.ettbackup` file, or a Supabase export `.json`, into this browser's data. Nothing is overwritten or removed.                                  |
-| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering.                                            |
+| Action                | Purpose                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Add                   | Add a task row to the selected day. Enter in the task field also adds it.                                                             |
+| Clear Grid            | After confirmation, clear all filled bubbles while keeping task rows, memo, and notes.                                                |
+| Export CSV            | Download task totals and activity summaries for the selected day.                                                                     |
+| Sync with GitHub      | Sync this device with your others through a private GitHub repository (encrypted). See [Syncing your devices](#syncing-your-devices). |
+| Live pairing          | Advanced: direct live sync between devices that are open together; needs a signaling server of your own.                              |
+| Back up               | Download all days and tasks as an `.ettbackup` file.                                                                                  |
+| Import                | Merge an `.ettbackup` file, or a Supabase export `.json`, into this browser's data. Nothing is overwritten or removed.                |
+| Resume auto-centering | Appears during the two-minute manual-scroll pause; immediately center on now and resume automatic centering.                          |
 
 Hover over each action for its tooltip. Remove individual task rows with their remove control.
 Other days are not cleared by these actions.
@@ -112,19 +113,58 @@ deleted task and its interval count.
 
 ### Syncing your devices
 
-You need a signaling server first (see below). Then choose **Advanced → Pair devices**, enter the
+**Sync with GitHub** (Advanced → Sync with GitHub) is the main way. Your devices store encrypted copies
+of your data as small files in a **private GitHub repository of yours** and merge each other's files.
+They do not need to be open at the same time, there is no server to run, and GitHub only ever sees
+scrambled data.
+
+One-time setup, about three minutes:
+
+1. On github.com, create a new **private** repository (for example `squirrel-tracks-data`) and tick
+   **Add a README file**.
+2. Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
+   Under **Repository access** choose _Only select repositories_ and pick that repository. Under
+   **Permissions → Repository permissions** set **Contents** to **Read and write**. Nothing else is
+   needed. Choose an expiry you are comfortable renewing.
+3. In the app: Advanced → Sync with GitHub, enter `your-name/squirrel-tracks-data` and the token, and
+   press **Connect**.
+4. To add another device, copy the link shown in that dialog and open it on the other device, then
+   enter a token there (a token per device is fine; the same one works too). The link carries the
+   repository name and the encryption key, never the token.
+
+How it behaves:
+
+- **Timing.** Changes are saved to GitHub about 10 seconds after you stop editing, and each device
+  checks for others' changes when it opens, when you return to its tab, when it comes back online, and
+  about once a minute. So it is not instant, but devices that are never open together still sync.
+- **Merging.** Edits from different devices are combined: bubbles from both are kept, and for a rename
+  or a memo the later edit wins. Edits made offline are published when the connection returns.
+- **Each device owns one file** (`devices/<id>.bin`), so devices never overwrite each other. Every sync
+  is a commit in the repository.
+- **Encryption.** Files are AES-GCM encrypted in the browser with a key derived from the secret in the
+  link. Whoever can read the repository cannot read your data without that key. File sizes and
+  timestamps are visible.
+- **The token** stays in that browser's localStorage. It can only touch the one repository you chose.
+  If it expires or is revoked, the footer says so; make a new one and enter it in the dialog.
+- **Disconnect this device** forgets the repository, key and token here and keeps your data. It
+  does not touch the repository or other devices. To cut off a device, delete its token on GitHub.
+- Anyone with the link _and_ access to the repository can read your data, so keep the link private.
+
+The footer shows the state: **Synced with GitHub**, **Syncing with GitHub…**, or a plain-language problem
+such as an expired token or a missing repository. Startup problems (for example a browser that blocks
+local storage) show as a red banner at the top of the page.
+
+#### Live pairing (advanced, optional)
+
+**Advanced → Live pairing** syncs devices directly with each other over WebRTC, instantly, but only
+while both are open, and it needs a signaling server of your own. Most people do not need it.
+
+You need a signaling server first (see below). Then choose **Advanced → Live pairing**, enter the
 server's address under **Signaling server**, and **Create pairing link** on one device. Open the link on
 another (or scan the QR code with your phone) and the two start syncing; repeat for each further
-device. The footer shows **Syncing with N other devices** while they are connected.
+device. The footer shows **Syncing with N other devices** while they are connected. If it does not
+connect, the footer and the **Sync details** list in the pairing dialog say why.
 
-If it does not connect, the footer and the **Sync details** list in the pairing dialog say why:
-no signaling server set, signaling server not connected (with its address), or connected but no
-other device found yet. Startup problems (for example a browser that blocks local storage) show as a
-red banner at the top of the page.
-
-- **Both devices must have the app open at the same time** to exchange changes. Anything you
-  edit while apart is kept and merged the next time they meet: bubbles from both are kept, and
-  for a rename or a memo the later edit wins. Browsers cannot sync in the background.
 - **The link is the key.** It contains a random room name and secret, in the part of the URL after
   `#`, which browsers never send to a server. All traffic between your devices is encrypted with
   that secret. Anyone who has the link can read and change your data, so share it only with yourself.
@@ -143,12 +183,13 @@ red banner at the top of the page.
 - **Unpair this device** stops syncing here and keeps your data. It does not remove other devices;
   to cut one off, unpair everywhere and create a new pairing, which has a new secret.
 - Some networks (strict firewalls, some mobile carriers) block direct connections between devices.
-  Back up and Import still work as a fallback.
 - Tabs of the same browser sync with each other automatically.
+
+Back up and Import also work as a manual fallback that needs nothing.
 
 ### Changes from other devices
 
-When data from another device arrives (by pairing or by importing a backup) and it changes the selected day
+When data from another device arrives (through GitHub, live pairing, or by importing a backup) and it changes the selected day
 (bubbles, tasks, renames, memo, or notes), the page updates itself and shows a notice listing what
 changed, for example `"Writing": +3 intervals` or `Renamed "A" to "B"`. The notice disappears
 after 20 seconds or when dismissed. Text you are typing in memo or notes is kept unless the other
@@ -204,12 +245,11 @@ squirrel_tracks/
 
 ## 💰 Cost
 
-Nothing to run or pay for beyond static hosting: GitHub Pages serves the files, and all data stays on
-your devices.
+Nothing to run or pay for: GitHub Pages serves the files, and syncing uses a private repository on your
+GitHub account (the free plan is plenty for the small encrypted files).
 
 ## 💡 Ideas, not started
 
-- An always-on peer (for example on a home server) so devices sync without being open together
 - Analytics views over the interval history
 - Native mobile apps (`ios-app/` is only a placeholder) and push notifications
 
@@ -224,7 +264,7 @@ A: Simplicity. No framework and no build step; vanilla JS is fast enough for a t
 A: No. There is no sign-in; data stays in your browser. Use Back up regularly, since clearing site data deletes it.
 
 **Q: Can I use it on my phone and laptop?**  
-A: Yes. Pair them (Advanced → Pair devices) and they sync directly while both are open, or move data by hand with Back up and Import. Either way the merge keeps both devices' changes.
+A: Yes. Use Advanced → Sync with GitHub on each (they do not need to be open together), or move data by hand with Back up and Import. Either way the merge keeps both devices' changes.
 
 **Q: How is it deployed?**  
 A: A GitHub Actions workflow publishes `web-frontend/` to GitHub Pages on every push to `main` (see [README-DEV.md](README-DEV.md)).

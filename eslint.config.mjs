@@ -27,6 +27,7 @@ export default [
         GridTaskTracker: "readonly",
         DataStore: "readonly",
         PeerSync: "readonly",
+        GitHubSync: "readonly",
         qrcode: "readonly",
         RemoteChanges: "readonly",
         TimeCalculations: "readonly",

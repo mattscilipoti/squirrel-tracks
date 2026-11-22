@@ -12,14 +12,15 @@ Browser (vanilla JS)
   → GridTaskTracker (in-memory copy of the selected day, rendering, UI)
   → DataStore (the only code that touches Yjs)
   → Y.Doc  ⇄  IndexedDB ("squirrel-tracks", via y-indexeddb)
-          ⇄  paired devices (via y-webrtc, encrypted)
+          ⇄  a private GitHub repository (encrypted files, github-sync.js)
+          ⇄  live paired devices (optional, via y-webrtc)
 ```
 
 Every edit is written to the Y.Doc immediately and persisted by y-indexeddb. Each
 browser and address (for example `localhost:5000` and the GitHub Pages site) has its
-own copy. Copies are combined in two ways: paired devices sync live over WebRTC (below), and
-a backup (`Y.encodeStateAsUpdate`) can be exported and imported elsewhere. Importing merges,
-it never overwrites.
+own copy. Copies are combined in three ways: through a private GitHub repository (below, the main
+way), live over WebRTC between devices that are open together (optional), and by exporting a backup
+(`Y.encodeStateAsUpdate`) and importing it elsewhere. Every path merges; none overwrites.
 
 ### Why Yjs
 
@@ -57,7 +58,34 @@ Merge rules:
 Not shared between devices: the selected date and "follow today" (`ettDeviceState`),
 the reminder interval, bell and volume (`ettReminderSettings`).
 
-### Pairing and sync (`web-frontend/js/sync.js`)
+### GitHub sync (`web-frontend/js/github-sync.js`)
+
+`GitHubSync` stores each device's full Yjs state as one encrypted file, `devices/<deviceId>.bin`, in a
+private repository, using the REST contents API directly from the browser (api.github.com allows
+CORS, including `Authorization`, `If-None-Match` and `PUT`). Devices never write each other's files, so
+there are no write conflicts; each merges the others' files with `Y.applyUpdate`.
+
+- **Settings** (localStorage `ettGithubSync`, per device): `repo`, `secret`, `token`, `deviceId`.
+  The `token` (fine-grained, one repository, Contents read/write) never leaves the device. The link
+  `…/#github=<owner/name>&secret=<secret>` carries repo and secret only, and the device asks for its own
+  token. The fragment is not sent to servers.
+- **Encryption:** AES-GCM, key = PBKDF2-SHA256 (200k iterations) of the secret. File layout is
+  `[1][12-byte IV][ciphertext]`. A file that fails to decrypt is skipped and reported (key mismatch or
+  tampering); it never reaches the document.
+- **Pull:** list `devices/` with `If-None-Match` (a 304 is cheap), download only files whose `sha` is not
+  already merged, decrypt, apply with origin `"github"`. A missing own file marks the device dirty so its
+  existing data is published.
+- **Push:** `PUT` the own file with the last known `sha`. A 409/422 means another tab of the same device
+  wrote it: pull (merging that), then retry once. Updates with origin `"github"` never mark the document
+  dirty, so pulled data is not pushed back.
+- **Schedule:** push 10 s after the last local change; poll every 60 s while the page is visible, on
+  `visibilitychange`, and on `online`. Offline errors keep the document dirty and recover on their own.
+- **Status:** `status()` returns `off`, `needs-token`, `syncing`, `ok`, `offline` or `error` with a plain
+  message; the footer prefers GitHub problems, then live peers, then GitHub's own state.
+- Every push is a commit. Sizes and timestamps are visible to anyone who can read the repository;
+  contents are not.
+
+### Live pairing (`web-frontend/js/sync.js`)
 
 `PeerSync` wraps y-webrtc's `WebrtcProvider`. A pairing is a random room name (16 bytes, hex)
 and secret (16 bytes, base64url) created on one device and saved in localStorage
@@ -101,7 +129,8 @@ No build step. Serve with any static HTTP server (`web-frontend/start-server.sh`
 | ------------------------- | --------------------------------------------------------------------------------- |
 | `index.html`              | Entry point, delete-task dialog, module script that opens the store               |
 | `js/store.js`             | `DataStore` - the Yjs data layer, merging, import/export                          |
-| `js/sync.js`              | `PeerSync` - pairing links and the WebRTC provider                                |
+| `js/github-sync.js`       | `GitHubSync` - encrypted sync through a private GitHub repository                 |
+| `js/sync.js`              | `PeerSync` - live pairing links and the WebRTC provider                           |
 | `js/app-grid.js`          | `GridTaskTracker` - grid, tasks, dates, reminder, backup/import, pairing UI       |
 | `js/time-calculations.js` | Date/time utilities, interval math, activity summaries                            |
 | `js/remote-changes.js`    | `RemoteChanges` - pure diff/summary of the screen vs the store                    |
