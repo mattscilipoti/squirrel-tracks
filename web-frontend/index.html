@@ -625,6 +625,11 @@
       })();
     </script>
     <script type="module">
+      // Live WebRTC pairing is switched off: it needs a signaling server, and without one it
+      // only produces connection errors. Set this to true to bring it back (the button and
+      // any saved pairing reappear; nothing was deleted).
+      const LIVE_PAIRING_ENABLED = false;
+
       // Open the local database, then tell app-grid.js to start.
       try {
         const { Y, IndexeddbPersistence, WebrtcProvider, qrcode } =
@@ -640,13 +645,16 @@
         // Ask the browser not to evict our data under storage pressure.
         navigator.storage?.persist?.();
         // Join from a link (#pair=... or #github=...), then resume anything saved.
-        const sync = new PeerSync({ WebrtcProvider, doc, storage: localStorage });
+        const sync = LIVE_PAIRING_ENABLED
+          ? new PeerSync({ WebrtcProvider, doc, storage: localStorage })
+          : null;
+        if (!LIVE_PAIRING_ENABLED) document.getElementById("pairBtn").hidden = true;
         const github = new GitHubSync({ Y, doc, storage: localStorage });
-        const joinedPeers = sync.joinFromHash(location.hash);
+        const joinedPeers = Boolean(sync?.joinFromHash(location.hash));
         const joinedGithub = !joinedPeers && github.joinFromHash(location.hash);
         if (joinedPeers || joinedGithub)
           history.replaceState(null, "", location.pathname + location.search);
-        if (!joinedPeers) sync.start();
+        if (sync && !joinedPeers) sync.start();
         github.start();
         window.dispatchEvent(
           new CustomEvent("app-store-ready", { detail: { store, sync, github } }),

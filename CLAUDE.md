@@ -46,7 +46,8 @@ npm run vendor                             # rebuild web-frontend/vendor/yjs.js 
 - `github-sync.js` (`GitHubSync`) is the main sync: one AES-GCM-encrypted file per device in a private
   repo, via the GitHub contents API (fetch is injected; see `FakeGitHub` in its test). Keep the token
   out of links, logs and the shared document; the secret goes in the link fragment only.
-- `sync.js` (`PeerSync`) is optional live pairing over y-webrtc. `sync.test.cjs` runs two devices in
+- `sync.js` (`PeerSync`) is optional live pairing over y-webrtc. It is currently switched off
+  (`LIVE_PAIRING_ENABLED = false` in `index.html`); the tracker must keep working with `sync = null`. `sync.test.cjs` runs two devices in
   worker threads (y-webrtc allows one doc per room per realm); don't call `provider.destroy()`
   without `awareness.destroy()` (see `PeerSync.stop`).
 - Tasks are reusable across days and identified by UUID; names are unique

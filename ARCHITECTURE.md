@@ -87,6 +87,10 @@ there are no write conflicts; each merges the others' files with `Y.applyUpdate`
 
 ### Live pairing (`web-frontend/js/sync.js`)
 
+Switched off by default: `LIVE_PAIRING_ENABLED` in the module script of `index.html` is `false`, so no
+`PeerSync` is created, nothing connects, and the Live pairing button is hidden (the tracker accepts
+`sync = null`). Setting it to `true` restores everything, including a saved pairing.
+
 `PeerSync` wraps y-webrtc's `WebrtcProvider`. A pairing is a random room name (16 bytes, hex)
 and secret (16 bytes, base64url) created on one device and saved in localStorage
 (`ettSyncPairing`, per device). It travels as a link `…/#pair=<room>.<secret>[&signaling=<urls>]`,

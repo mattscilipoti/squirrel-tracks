@@ -157,7 +157,11 @@ The footer shows the state: **Synced with GitHub**, **Syncing with GitHub…**, 
 such as an expired token or a missing repository. Startup problems (for example a browser that blocks
 local storage) show as a red banner at the top of the page.
 
-#### Live pairing (advanced, optional)
+#### Live pairing (advanced, optional, currently switched off)
+
+> **Currently switched off.** The button is hidden and nothing connects, so there are no signaling
+> errors. To bring it back, set `LIVE_PAIRING_ENABLED = true` in the module script of
+> `web-frontend/index.html`. Nothing was removed, and a saved pairing resumes.
 
 **Advanced → Live pairing** syncs devices directly with each other over WebRTC, instantly, but only
 while both are open, and it needs a signaling server of your own. Most people do not need it.
