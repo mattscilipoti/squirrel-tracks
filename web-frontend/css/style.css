@@ -1206,3 +1206,20 @@ footer a:hover {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* Marks a development build (anything the deploy workflow did not stamp) */
+.dev-badge {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1500;
+  padding: 0.15rem 0.9rem;
+  background: #e8590c;
+  color: #fff;
+  font:
+    700 0.75rem/1.4 system-ui,
+    sans-serif;
+  letter-spacing: 0.15em;
+  border-bottom-left-radius: 8px;
+  pointer-events: none;
+}

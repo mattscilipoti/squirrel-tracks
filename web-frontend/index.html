@@ -675,6 +675,15 @@
         if (versionLabel && version) {
           if (version.commit === "dev") {
             versionLabel.textContent = "· dev build";
+            // Only the deploy workflow stamps a real commit, so anything else is a dev copy:
+            // make that obvious so test data is never mistaken for the real thing.
+            document.title = "[DEV] " + document.title;
+            const badge = document.createElement("div");
+            badge.className = "dev-badge";
+            badge.textContent = "DEV";
+            badge.title =
+              "Development build: not the deployed app. Keep its data and sync repository separate from production.";
+            document.body.append(badge);
           } else {
             const shortCommit = version.commit.slice(0, 7);
             versionLabel.append("· Build ");

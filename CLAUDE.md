@@ -13,7 +13,7 @@ predate this; `ARCHITECTURE.md` is the current source of truth.
 ## Commands
 
 ```bash
-npm test                                   # node --test web-frontend/js/*.test.cjs
+npm test                                   # node --test web-frontend/js/*.test.cjs scripts/*.test.cjs
 node --test web-frontend/js/app-grid.test.cjs                  # one file
 node --test --test-name-pattern="rename" web-frontend/js/*.test.cjs  # one test by name
 npm run lint                               # eslint web-frontend/js
@@ -21,6 +21,7 @@ npm run format / npm run format:check      # prettier on web-frontend
 npm start                                  # serve on :5000 (web-frontend/start-server.sh, WEBrick via root Gemfile)
 npm run signaling                          # y-webrtc signaling server on :4444, for pairing devices locally
 npm run check:signaling -- ws://localhost:4444   # is a signaling address reachable? (scripts/check-signaling.sh)
+npm run devices -- list owner/name         # list/clean up device files in a sync repo (scripts/devices.cjs; needs GITHUB_TOKEN)
 npm run vendor                             # rebuild web-frontend/vendor/yjs.js (esbuild)
 ```
 
@@ -46,6 +47,10 @@ npm run vendor                             # rebuild web-frontend/vendor/yjs.js 
 - `github-sync.js` (`GitHubSync`) is the main sync: one AES-GCM-encrypted file per device in a private
   repo, via the GitHub contents API (fetch is injected; see `FakeGitHub` in its test). Keep the token
   out of links, logs and the shared document; the secret goes in the link fragment only.
+- `scripts/fake-github.cjs` is the in-memory GitHub shared by `github-sync.test.cjs` and
+  `scripts/devices.test.cjs`; extend it rather than mocking fetch again. `scripts/devices.cjs` reuses
+  `GitHubSync` for its API calls and decryption. Dev and production data are kept apart with separate
+  repositories; a build without a deploy stamp (`APP_VERSION.commit === "dev"`) shows a DEV badge.
 - `sync.js` (`PeerSync`) is optional live pairing over y-webrtc. It is currently switched off
   (`LIVE_PAIRING_ENABLED = false` in `index.html`); the tracker must keep working with `sync = null`. `sync.test.cjs` runs two devices in
   worker threads (y-webrtc allows one doc per room per realm); don't call `provider.destroy()`

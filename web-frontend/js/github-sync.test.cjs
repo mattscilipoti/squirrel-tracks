@@ -4,8 +4,7 @@ const Y = require("yjs");
 const GitHubSync = require("./github-sync.js");
 const DataStore = require("./store.js");
 
-const TOKEN = "github_pat_" + "a".repeat(30);
-const REPO = "me/squirrel-data";
+const { FakeGitHub, TOKEN, REPO } = require("../../scripts/fake-github.cjs");
 
 function memoryStorage() {
   const map = new Map();
@@ -14,79 +13,6 @@ function memoryStorage() {
     setItem: (key, value) => map.set(key, String(value)),
     removeItem: (key) => map.delete(key),
   };
-}
-
-/** The slice of GitHub's REST API the app uses, kept in memory. */
-class FakeGitHub {
-  constructor({ isPrivate = true, push = true } = {}) {
-    Object.assign(this, { isPrivate, push, files: new Map(), version: 0, shas: 0 });
-    this.token = TOKEN;
-    this.calls = [];
-    this.offline = false;
-    this.rateLimited = false;
-    this.fetch = this.fetch.bind(this);
-  }
-
-  json(status, body, headers = {}) {
-    return new Response(JSON.stringify(body), { status, headers });
-  }
-
-  async fetch(url, init = {}) {
-    if (this.offline) throw new TypeError("network down");
-    const path = new URL(url).pathname;
-    const method = init.method || "GET";
-    const headers = init.headers || {};
-    const call = {
-      method,
-      path,
-      etag: headers["If-None-Match"],
-      raw: /raw/.test(headers.Accept),
-    };
-    this.calls.push(call);
-    if (headers.Authorization !== `Bearer ${this.token}`) return this.json(401, {});
-    if (this.rateLimited) return this.json(403, {}, { "X-RateLimit-Remaining": "0" });
-    if (path === `/repos/${REPO}`)
-      return this.json(200, {
-        private: this.isPrivate,
-        permissions: { push: this.push },
-      });
-    const dir = `/repos/${REPO}/contents/devices`;
-    if (path === dir && method === "GET") {
-      if (!this.files.size) return this.json(404, { message: "Not Found" });
-      const etag = `"v${this.version}"`;
-      if (headers["If-None-Match"] === etag) return new Response(null, { status: 304 });
-      const list = [...this.files].map(([name, file]) => ({
-        name,
-        type: "file",
-        sha: file.sha,
-      }));
-      return this.json(200, list, { ETag: etag });
-    }
-    if (path.startsWith(`${dir}/`)) {
-      const name = path.slice(dir.length + 1);
-      const file = this.files.get(name);
-      if (method === "GET") {
-        return file
-          ? new Response(file.bytes, { status: 200 })
-          : this.json(404, { message: "Not Found" });
-      }
-      if (method === "PUT") {
-        const body = JSON.parse(init.body);
-        if (file && body.sha !== file.sha)
-          return this.json(409, { message: "sha mismatch" });
-        if (!file && body.sha) return this.json(422, { message: "sha not needed" });
-        const sha = `sha${++this.shas}`;
-        this.files.set(name, { sha, bytes: Buffer.from(body.content, "base64") });
-        this.version++;
-        return this.json(file ? 200 : 201, { content: { sha } });
-      }
-    }
-    return this.json(404, {});
-  }
-
-  count(method, pattern) {
-    return this.calls.filter((c) => c.method === method && pattern.test(c.path)).length;
-  }
 }
 
 let ids = 0;
@@ -433,4 +359,44 @@ test("a device set up before the id had its own key keeps its id across a discon
   sync.disconnect();
   sync.joinFromHash(link.slice(link.indexOf("#")));
   assert.equal(sync.settings.deviceId, id, "rejoining reuses the same file name");
+});
+
+test("moving a device to another repository starts a new key and leaves the old repo alone", async () => {
+  const prod = new FakeGitHub({ repo: "me/prod" });
+  const dev = new FakeGitHub({ repo: "me/dev" });
+  const route = (url, init) =>
+    (url.includes("/repos/me/dev") ? dev : prod).fetch(url, init);
+  const doc = new Y.Doc();
+  const store = new DataStore(Y, doc, { idFactory: () => `t${++ids}` });
+  const sync = new GitHubSync({
+    Y,
+    doc,
+    storage: memoryStorage(),
+    fetch: route,
+    autoSchedule: false,
+  });
+  store.createTask("Writing");
+  await sync.connect({ repo: "me/prod", token: TOKEN });
+  const prodSecret = sync.settings.secret;
+  const deviceId = sync.settings.deviceId;
+
+  await sync.connect({ repo: "me/dev", token: TOKEN });
+  assert.notEqual(
+    sync.settings.secret,
+    prodSecret,
+    "a different repository gets its own key",
+  );
+  assert.equal(sync.settings.deviceId, deviceId, "the device keeps its identity");
+  assert.equal(sync.settings.repo, "me/dev");
+  assert.equal(dev.files.size, 1, "local data was published to the new repository");
+  assert.equal(prod.files.size, 1, "the old repository is left as it was");
+});
+
+test("reconnecting to the same repository keeps its key", async () => {
+  const github = new FakeGitHub();
+  const a = device(github);
+  await a.sync.connect({ repo: REPO, token: TOKEN });
+  const secret = a.sync.settings.secret;
+  await a.sync.connect({ repo: REPO, token: TOKEN }); // e.g. pasting a renewed token
+  assert.equal(a.sync.settings.secret, secret);
 });

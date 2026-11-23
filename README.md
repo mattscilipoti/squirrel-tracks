@@ -42,6 +42,7 @@ All scripts (`npm run` lists them):
 | `npm start`                             | Serve `web-frontend/` on port 5000 (`web-frontend/start-server.sh`)               |
 | `npm run signaling`                     | Signaling server for pairing, port 4444 (`PORT=4455 npm run signaling` to change) |
 | `npm run check:signaling -- wss://host` | Test whether a signaling address is reachable and speaks WebSocket                |
+| `npm run devices -- list <owner/name>`  | List or remove the per-device files in a sync repository (see above)              |
 | `npm test`                              | Unit tests                                                                        |
 | `npm run lint` / `npm run format:check` | ESLint / Prettier check (`npm run format` rewrites files)                         |
 | `npm run vendor`                        | Rebuild `web-frontend/vendor/yjs.js` after changing the Yjs-related dependencies  |
@@ -156,6 +157,58 @@ How it behaves:
 The footer shows the state: **Synced with GitHub**, **Syncing with GitHub…**, or a plain-language problem
 such as an expired token or a missing repository. Startup problems (for example a browser that blocks
 local storage) show as a red banner at the top of the page.
+
+#### Development vs production
+
+The deployed site and your local copy never share data on their own: a browser keeps data separately for
+each address (`localhost:5000` and your site's domain each have their own). The only place they could
+cross is the sync settings, so keep those apart too:
+
+- Use **two private repositories**, for example `nut-ledger` (production) and `nut-ledger-dev`, each with
+  its own fine-grained token limited to that one repository. A token for the dev repository cannot read
+  or write production data at all, which is why separate repositories beat separate folders in one
+  repository (a token covers every folder and branch of its repository).
+- Each repository has its own encryption key, so a dev device and a production device cannot read each
+  other's files even by mistake.
+- A page that was not stamped by the deploy workflow (anything you run locally) shows an orange **DEV**
+  badge in the corner and `[DEV]` in the tab title, so test data is not mistaken for the real thing.
+- To try production-like data in dev, use **Back up** on the production site and **Import** on dev. Import
+  merges and does not sync back, as long as dev is connected to the dev repository.
+
+#### Moving a browser to a different repository
+
+Open Advanced → **Sync with GitHub**. To switch repositories:
+
+1. Press **Disconnect this device** (optional but tidy; your data stays).
+2. Enter the new repository and a token for it, and press **Connect**.
+
+Connecting to a _different_ repository always starts a new key for it, and this browser's data is published
+there. Connecting a browser to a repository that already holds another device's data is refused: open that
+device's sync link instead, so both use the same key. Moving does not touch the old repository, so this
+browser's old file stays there until you remove it (see below).
+
+#### Cleaning up device files
+
+Each browser that syncs leaves one file, `devices/<id>.bin`, in the repository. Files from browsers you
+no longer use, or written under a different key, can be listed and removed from the command line:
+
+```bash
+export GITHUB_TOKEN=github_pat_...          # token with Contents read/write on the repository
+export ETT_SYNC_LINK='https://…/#github=you/nut-ledger&secret=…'   # optional: the app's sync link
+
+npm run devices -- list you/nut-ledger
+npm run devices -- delete you/nut-ledger --unreadable        # remove files that cannot be decrypted
+npm run devices -- delete you/nut-ledger 0123456789abcdef.bin --force   # remove a readable one
+```
+
+- The token is read from the environment, never from an argument, so it stays out of your shell history.
+- With `ETT_SYNC_LINK` (Advanced → Sync with GitHub → Copy link) the tool can tell which files are
+  readable; it also supplies the repository name. Without it, `list` still works but nothing can be
+  identified as unreadable.
+- Unreadable files hold nothing anyone can recover, so removing them is safe. A **readable** file belongs
+  to a device whose latest data other devices may not have merged yet, so deleting it needs `--force`;
+  make sure every device has synced first.
+- `--dry-run` shows what would be deleted; `--yes` skips the typed confirmation.
 
 #### Live pairing (advanced, optional, currently switched off)
 

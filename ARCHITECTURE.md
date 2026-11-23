@@ -82,6 +82,9 @@ there are no write conflicts; each merges the others' files with `Y.applyUpdate`
   `visibilitychange`, and on `online`. Offline errors keep the document dirty and recover on their own.
 - **Status:** `status()` returns `off`, `needs-token`, `syncing`, `ok`, `offline` or `error` with a plain
   message; the footer prefers GitHub problems, then live peers, then GitHub's own state.
+- **One key per repository:** `connect()` reuses the secret only for the same repository; a different
+  repository gets a new secret (and the populated-repository check), so environments never share a key.
+  The device id is kept in its own storage key so a device keeps one file name across reconnects.
 - Every push is a commit. Sizes and timestamps are visible to anyone who can read the repository;
   contents are not.
 

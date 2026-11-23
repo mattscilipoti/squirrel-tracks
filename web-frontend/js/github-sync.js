@@ -144,9 +144,12 @@ class GitHubSync {
       throw new GitHubSyncError("That does not look like a GitHub access token.");
     const info = await this.verify(repo, token);
     const existing = this.settings;
+    // The key belongs to one repository: moving to another repository means a new key, so
+    // that (say) a development repository never shares a key with the real one.
+    const keptSecret = existing?.repo === repo ? existing.secret : null;
     // A device that has no key yet would invent its own, which cannot read the files of a
     // device that already published with a different one. It must join with that device's link.
-    if (!existing?.secret && (await this.hasDeviceFiles(repo, token)))
+    if (!keptSecret && (await this.hasDeviceFiles(repo, token)))
       throw new GitHubSyncError(
         "This repository already holds data from another device, which this device can't read without that device's sync link. On the other device open Advanced → Sync with GitHub → Copy link, and open that link here. (Or use a new, empty repository.)",
       );
@@ -155,7 +158,7 @@ class GitHubSync {
     this.save({
       repo,
       token,
-      secret: existing?.secret || this.newSecret(),
+      secret: keptSecret || this.newSecret(),
       deviceId: this.deviceId(),
     });
     await this.start(); // the first round, so problems show up straight away
