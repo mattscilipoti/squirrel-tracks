@@ -65,6 +65,10 @@ class GitHubSync {
     this.error = null;
     this.lastSuccess = null;
     this.keyPromise = null;
+    // Devices set up before the id had its own storage key kept it inside the settings.
+    const legacyId = this.settings?.deviceId;
+    if (legacyId && !this.storage.getItem(GitHubSync.DEVICE_KEY))
+      this.storage.setItem(GitHubSync.DEVICE_KEY, legacyId);
   }
 
   // ── Settings ─────────────────────────────────────────────────────────────

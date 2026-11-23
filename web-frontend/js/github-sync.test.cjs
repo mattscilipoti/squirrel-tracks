@@ -409,3 +409,28 @@ test("a tampered file is ignored instead of corrupting the data", async () => {
   assert.deepEqual(b.store.readDay("2026-11-22").tasks, []);
   assert.equal(b.sync.status().state, "error");
 });
+
+test("a device set up before the id had its own key keeps its id across a disconnect", async () => {
+  const github = new FakeGitHub();
+  const a = device(github);
+  await a.sync.connect({ repo: REPO, token: TOKEN });
+  const id = a.sync.settings.deviceId;
+
+  // Simulate the older storage layout: the id only inside the settings.
+  const storage = memoryStorage();
+  storage.setItem(GitHubSync.STORAGE_KEY, a.storage.getItem(GitHubSync.STORAGE_KEY));
+  const doc = new Y.Doc();
+  const sync = new GitHubSync({
+    Y,
+    doc,
+    storage,
+    fetch: github.fetch,
+    autoSchedule: false,
+  });
+  assert.equal(storage.getItem(GitHubSync.DEVICE_KEY), id, "migrated on startup");
+
+  const link = a.sync.link("https://example.org/");
+  sync.disconnect();
+  sync.joinFromHash(link.slice(link.indexOf("#")));
+  assert.equal(sync.settings.deviceId, id, "rejoining reuses the same file name");
+});
