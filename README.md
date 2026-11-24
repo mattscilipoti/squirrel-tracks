@@ -14,11 +14,12 @@ This is a digital version of that [Emergent Task Timing](https://davidseah.com/2
 
 ## 📖 Documentation
 
-| Document                               | Purpose                                       |
-| -------------------------------------- | --------------------------------------------- |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | Current architecture and data model           |
-| **[README-DEV.md](README-DEV.md)**     | Dev environment and deploying to GitHub Pages |
-| **[CLAUDE.md](CLAUDE.md)**             | Commands and conventions for Claude Code      |
+| Document                                                                 | Purpose                                       |
+| ------------------------------------------------------------------------ | --------------------------------------------- |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)**                                   | Current architecture and data model           |
+| **[README-DEV.md](README-DEV.md)**                                       | Dev environment and deploying to GitHub Pages |
+| **[docs/local-first-sync-handoff.md](docs/local-first-sync-handoff.md)** | The sync design for reuse in other projects   |
+| **[CLAUDE.md](CLAUDE.md)**                                               | Commands and conventions for Claude Code      |
 
 SETUP-SUMMARY.md, PROMPTS-PHASE-BY-PHASE.md, 00-START-HERE.md, and the other setup notes in the
 repo root date from the original Rails/iOS plan and no longer describe the app.
