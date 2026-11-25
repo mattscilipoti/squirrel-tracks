@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests, lint and formatting (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npm run format:check
+
+  vendor:
+    # web-frontend/vendor/yjs.js is generated and committed. A dependency bump (for example from
+    # Dependabot) changes package.json but not that file, so rebuild it and fail on any difference.
+    name: Vendored bundle is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run vendor
+      - name: Fail if the committed bundle differs from a fresh build
+        run: |
+          if ! git diff --exit-code --stat -- web-frontend/vendor/yjs.js; then
+            echo "::error file=web-frontend/vendor/yjs.js::The vendored bundle is out of date. Run 'npm run vendor' and commit the result."
+            exit 1
+          fi

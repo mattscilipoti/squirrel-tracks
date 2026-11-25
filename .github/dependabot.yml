@@ -1,0 +1,26 @@
+version: 2
+
+# Version updates for the app's own tooling and dependencies. (Security updates, including the
+# ones for the unused Rails backend, are controlled in the repository's security settings.)
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # These feed web-frontend/vendor/yjs.js, which is generated and committed. One PR per bump
+      # keeps the rebuild to a single `npm run vendor`; the "Vendored bundle is up to date" CI job
+      # fails the PR until that rebuilt file is committed to its branch.
+      sync-stack:
+        patterns:
+          - yjs
+          - y-*
+          - lib0
+          - qrcode-generator
+          - esbuild
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

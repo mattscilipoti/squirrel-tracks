@@ -7,6 +7,8 @@ the conversation that produced it.
 
 Sections 1–10 describe the original implementation. Sections 11–16 describe proposed work, not
 features already available. The recovery decisions added on 2026-11-25 are in §16.
+**§17 records the review of §15–§16 (2026-11-25) and overrides them where they differ:** phase order,
+package name and shape, the own-file policy, and the extra work found. Read it before §15.
 
 ## 1. The idea in one paragraph
 
@@ -227,7 +229,7 @@ new GitHubSync({
 so a non-Yjs app can supply its own mergeable state (the per-device-file, encrypted-blob transport does not
 care what is inside, but the app must be able to merge two states without conflicts).
 
-**Skill outline** (`local-first-github-sync/SKILL.md`): when to use / not use (single user, own devices; not
+**Skill outline** (`local-first-repo-sync/SKILL.md`): when to use / not use (single user, own devices; not
 for multi-user or large data); decision tree (need both devices online at once? → WebRTC path; else GitHub
 path); steps: (1) choose the data model and apply the CRDT rules of §3, (2) vendor the bundle, (3) store
 layer + tests, (4) add GitHub sync + the in-memory GitHub double, (5) dialog, link and footer status, (6)
@@ -295,8 +297,8 @@ maintenance** (a public npm package lets Dependabot keep every consumer current,
 existing no-AI-on-a-schedule convention; vendored copies would drift and need hand-patching).
 
 The work happens in the Squirrel Tracks repo and the shared package repository
-[mattscilipoti/local-first-github-sync](https://github.com/mattscilipoti/local-first-github-sync),
-not in devcontainer-kit. Use `git@github.com:mattscilipoti/local-first-github-sync.git` to clone the
+[mattscilipoti/local-first-repo-sync](https://github.com/mattscilipoti/local-first-repo-sync),
+not in devcontainer-kit. Use `git@github.com:mattscilipoti/local-first-repo-sync.git` to clone the
 package repository. This is the shared code repository, not a private repository holding sync data;
 each consuming app chooses its own private data repository or folder.
 
@@ -324,7 +326,7 @@ Everything that touches the wire format or key semantics, while there is exactly
 
 ### Phase 2 — Extract into the shared package repo and publish an npm package
 
-- Package repo: `git@github.com:mattscilipoti/local-first-github-sync.git`. Planned MIT-licensed contents:
+- Package repo: `git@github.com:mattscilipoti/local-first-repo-sync.git`. Planned MIT-licensed contents:
   `GitHubSync` with injected dependencies, the adapter interface with the Yjs adapter as the shipped
   default, `fake-github`, the
   devices CLI, and the tests. ESM with the current CJS test compatibility; no browser globals.
@@ -413,20 +415,20 @@ Show the last successful push and pull separately from the last local change.
 
 ### If something is lost: information required from the user
 
-| Lost piece | User must supply or still have | Recovery and limits |
-| --- | --- | --- |
-| Token expired, revoked, or lost | GitHub account access, repo/folder identity, and a surviving configured browser or saved recovery record | Create a replacement token for the same repo. Retain the existing secret; verify the saved record during renewal. |
-| One device lost or browser storage cleared | Saved recovery record (or one recovered from another trusted browser), GitHub access/new token, and surviving repo snapshots | Enroll a fresh browser and merge the available snapshots. Unsynced edits unique to the lost device are gone. |
-| Recovery record/link lost, trusted browser survives | Access to that browser with its stored secret | Re-export the record and local data through trusted local UI, save them, and verify retrieval. GitHub access is needed only if also restoring sync. |
-| All browsers lost, repo survives | Saved recovery record including secret/derivation metadata, plus GitHub access/new token | Download, decrypt, and merge snapshots in a fresh browser. Restore only data that reached the repo. |
-| Secret and all configured browsers lost | Independently readable data backup, plus its separate password/key if encrypted | Import into a fresh local store; generate and save a new sync secret. Without such a backup, repo ciphertext cannot recover the data. |
-| Repo deleted or inaccessible, browser survives | Access to surviving browser data; GitHub access to create/use a replacement repo | Export first, merge other available trusted sources, then set up replacement sync and save an updated record. The browser may never have pulled some edits. |
-| Repo and all browsers lost | Independent data backup and any backup decryption credentials | Restore locally, then configure a replacement repo when GitHub access is available. A recovery record without any data source is insufficient. |
-| GitHub account access lost, repo inaccessible | A surviving browser or independent backup; account recovery methods to attempt GitHub recovery | Preserve local data without waiting for account recovery. A new account/repo can restore sync, but cannot retrieve missing data from the old private repo. |
-| Snapshot corrupt or undecryptable | Correct recovery record and another valid snapshot, surviving browser, or independent backup | Preserve the failed file; try verified sources without destructive overwrite. Report missing data explicitly; do not present partial recovery as complete. |
-| Unwanted changes synced to all devices | An independent pre-change backup or suitable historical snapshot, and credentials to read it | Restore into an isolated fresh store and inspect/export desired data. Merging an old CRDT snapshot into the damaged live doc does not necessarily undo edits or tombstones. |
-| Device/token compromised | GitHub account access, identification of affected tokens/apps/devices, and trusted data source; recovery record for any needed old ciphertext | Revoke affected access, preserve trusted data, then rotate exposed secrets and re-enroll trusted devices. Replace the saved record and verify it. Already disclosed data cannot be made secret again. |
-| Secret/link exposed but tokens remain safe | Trusted browser/data or backup, current recovery record as needed, and GitHub access | Rotate the exposed app's secret and migrate trusted devices. Old ciphertext remains readable with the old secret; token revocation alone cannot fix this. |
+| Lost piece                                          | User must supply or still have                                                                                                                | Recovery and limits                                                                                                                                                                                   |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Token expired, revoked, or lost                     | GitHub account access, repo/folder identity, and a surviving configured browser or saved recovery record                                      | Create a replacement token for the same repo. Retain the existing secret; verify the saved record during renewal.                                                                                     |
+| One device lost or browser storage cleared          | Saved recovery record (or one recovered from another trusted browser), GitHub access/new token, and surviving repo snapshots                  | Enroll a fresh browser and merge the available snapshots. Unsynced edits unique to the lost device are gone.                                                                                          |
+| Recovery record/link lost, trusted browser survives | Access to that browser with its stored secret                                                                                                 | Re-export the record and local data through trusted local UI, save them, and verify retrieval. GitHub access is needed only if also restoring sync.                                                   |
+| All browsers lost, repo survives                    | Saved recovery record including secret/derivation metadata, plus GitHub access/new token                                                      | Download, decrypt, and merge snapshots in a fresh browser. Restore only data that reached the repo.                                                                                                   |
+| Secret and all configured browsers lost             | Independently readable data backup, plus its separate password/key if encrypted                                                               | Import into a fresh local store; generate and save a new sync secret. Without such a backup, repo ciphertext cannot recover the data.                                                                 |
+| Repo deleted or inaccessible, browser survives      | Access to surviving browser data; GitHub access to create/use a replacement repo                                                              | Export first, merge other available trusted sources, then set up replacement sync and save an updated record. The browser may never have pulled some edits.                                           |
+| Repo and all browsers lost                          | Independent data backup and any backup decryption credentials                                                                                 | Restore locally, then configure a replacement repo when GitHub access is available. A recovery record without any data source is insufficient.                                                        |
+| GitHub account access lost, repo inaccessible       | A surviving browser or independent backup; account recovery methods to attempt GitHub recovery                                                | Preserve local data without waiting for account recovery. A new account/repo can restore sync, but cannot retrieve missing data from the old private repo.                                            |
+| Snapshot corrupt or undecryptable                   | Correct recovery record and another valid snapshot, surviving browser, or independent backup                                                  | Preserve the failed file; try verified sources without destructive overwrite. Report missing data explicitly; do not present partial recovery as complete.                                            |
+| Unwanted changes synced to all devices              | An independent pre-change backup or suitable historical snapshot, and credentials to read it                                                  | Restore into an isolated fresh store and inspect/export desired data. Merging an old CRDT snapshot into the damaged live doc does not necessarily undo edits or tombstones.                           |
+| Device/token compromised                            | GitHub account access, identification of affected tokens/apps/devices, and trusted data source; recovery record for any needed old ciphertext | Revoke affected access, preserve trusted data, then rotate exposed secrets and re-enroll trusted devices. Replace the saved record and verify it. Already disclosed data cannot be made secret again. |
+| Secret/link exposed but tokens remain safe          | Trusted browser/data or backup, current recovery record as needed, and GitHub access                                                          | Rotate the exposed app's secret and migrate trusted devices. Old ciphertext remains readable with the old secret; token revocation alone cannot fix this.                                             |
 
 Deleting a device file or forgetting a token locally **does not revoke GitHub access**. Revocation
 requires invalidating the credential at GitHub. Rotation cannot prevent decryption of old ciphertext
@@ -483,3 +485,87 @@ separate credentials; a TUI cannot make shared-folder tokens folder-scoped.
 Implement the essentials first; do not wait for a TUI to make recovery possible. Detailed token
 management APIs, reminder cadence, backup storage/retention, and rotation protocol remain design
 decisions to verify before implementation.
+
+## 17. Review outcome and revised plan (2026-11-25)
+
+A review of §15–§16 against the code and the outside world. Where this section differs from §15–§16, this
+section wins. The working plan lives with the repo owner; this is the part another instance needs.
+
+### Decisions
+
+1. **Order: recovery first, then extract, then harden.** (§15 put hardening first.) The v2 migration needs an
+   export and restore path as its safety net, and extraction is mostly mechanical.
+2. **A device never silently overwrites its own unreadable file.** It reports it and offers an explicit
+   "Replace" that names what is lost. Today's code does overwrite (`pull()` marks the device dirty when its
+   own file cannot be decrypted); that repaired a real mismatched-key incident but would let an old client
+   destroy a v2 file, and it contradicts §15's "preserve for recovery". This change must reach **every device
+   before any v2 writer exists**.
+3. **Package: generic core plus a GitHub transport, named `local-first-repo-sync`.** The repository is
+   `github.com/mattscilipoti/local-first-repo-sync` (renamed from the earlier name, now public, still empty).
+   It is _not peer-to-peer_: devices never talk to each other, they share a store; say "repo sync". Only the
+   optional WebRTC path is peer-to-peer.
+4. **Publish early as `0.x`, clearly experimental**, from the package repo's CI. npm provenance requires a
+   public source repo (done); trusted publishing needs npm >= 11.5.1 and Node >= 22.14 in the publish job
+   only. 1.0 waits for the independent security review (§15 phase 5).
+
+### Core and transport
+
+The sync logic mixes protocol with GitHub calls (about a dozen sites in `github-sync.js`: verify, request and
+error mapping, list/read/write). Split it:
+
+- **Core (`RepoSync`):** adapter, encryption, pull/push, dirty tracking, scheduling, status, link and recovery
+  record.
+- **Transport (`GitHubTransport`, the only one shipped at first):**
+  `verify() -> {private, canWrite}` (optional hint), `list(dir, {etag}) -> {notModified, etag, files:[{name,
+version, size}]}` (a missing directory is empty), `read(dir, name) -> bytes`, `write(dir, name, bytes,
+{expectedVersion, message}) -> {version}` (conflict raises a conflict error), `remove(dir, name, {version,
+message})`, optional `history`/`readAt` (used by `recover --at`), and normalized errors (`auth`, `forbidden`,
+  `notFound`, `conflict`, `rateLimited`, `network`, `server`). Settings record the transport kind; legacy
+  settings read as `github`.
+- Other source-repository hosts are an **assumption, not a promise**. Gitea/Forgejo have a GitHub-like contents
+  API; GitLab's repository files API has a different version and conflict model. Each needs its own check of
+  browser CORS, token scoping and conflict semantics before it is supported. Because each device writes only
+  its own file, compare-and-swap is needed only for the same-device two-tab race.
+
+### Gaps found (all now part of the plan)
+
+1. **No CI and no Dependabot config existed.** Added in Stage 0 (see below). The committed `vendor/yjs.js` is
+   generated, so a dependency bump leaves it stale; CI rebuilds it and fails on any difference.
+2. **Own-file overwrite policy** (decision 2).
+3. **v2 rollout must be two-phase:** release "reads v1+v2, writes v1" everywhere, then "writes v2". A client
+   must never overwrite a file whose version byte is newer than it understands; it reports "update the app".
+4. **`appId` must not rename app-owned storage.** §15 lists the IndexedDB name among the namespaced items, but
+   persistence belongs to the app (y-indexeddb); renaming `squirrel-tracks` would make existing data look gone.
+   Legacy mode keeps `ettGithubSync`, `ettGithubDeviceId`, the salt string and the folder `devices/`.
+5. **ESM and CJS.** Node 20 cannot `require()` ESM and the tests are `.cjs`: publish both from one source with
+   an `exports` map, with no browser globals (inject the visibility/online hooks and the scheduler).
+6. **A `recover` command** that downloads all device files, decrypts them with the recovery record, merges
+   with Yjs and writes an `.ettbackup`; `--at <sha|date>` reads an older commit. This is the real "all browsers
+   lost, repo survives" and "unwanted changes synced" path, and it is testable without a browser. It needs
+   per-file history in the fake repository.
+7. **Recovery record schema and `joinFromRecord`.** A record is a superset of the sync link; restoring from it
+   bypasses the "populated repo" refusal because it carries the key.
+8. **Separate last-push, last-pull and last-local-change times** (today there is only `lastSuccess`).
+9. **The backup file is plaintext Yjs state with no schema or date.** Add metadata; a passphrase-encrypted
+   export is optional, since the plaintext export already restores without the sync secret.
+10. **An opt-in integration test against a real throwaway private repo** before any wire-format change; the
+    fake cannot show empty-repo, history or rate-limit behaviour.
+11. **A golden v1 fixture** (deterministic IV and secret) generated from today's code, so extraction and v2 can
+    prove byte-compatibility with files already in a real repository.
+12. Still open: reminder interval and snooze defaults, and the repo/folder naming convention.
+
+### Revised stages
+
+- **Stage 0, foundations (done):** `.github/workflows/ci.yml` (tests, lint and format on Node 20 and 22, plus a
+  "vendored bundle is up to date" job) and `.github/dependabot.yml` (npm with the Yjs-related packages grouped,
+  and github-actions). A Dependabot PR that changes those packages fails CI until `npm run vendor` is committed.
+- **Stage 1, recovery essentials in the app:** the own-file policy; the recovery record, retrieval check and
+  `joinFromRecord`; push/pull/local-change times; backup metadata; the `recover` command and fake-repo history.
+  Exit: restore real data into a fresh browser using only the saved record and a replacement token, and restore a
+  plaintext export without the secret. Ship to all devices before any v2 writer.
+- **Stage 2, extract with no behaviour change:** the core/transport split, ESM+CJS build, golden v1 fixture,
+  CI and a tagged release workflow with provenance, then the app consumes the package. Publish `0.x`.
+- **Stage 3, harden to v2 inside the package:** folder namespacing, one key per (repo, folder), HKDF and
+  AES-GCM additional data, two-phase rollout, cross-folder and skew tests, and the integration test above.
+- **Later:** skill and prompts (live pairing as an appendix), the rest of §16, a second transport only if a real
+  need appears, and the independent security review before 1.0.
