@@ -502,11 +502,31 @@ section wins. The working plan lives with the repo owner; this is the part anoth
    before any v2 writer exists**.
 3. **Package: generic core plus a GitHub transport, named `local-first-repo-sync`.** The repository is
    `github.com/mattscilipoti/local-first-repo-sync` (renamed from the earlier name, now public, still empty).
-   It is _not peer-to-peer_: devices never talk to each other, they share a store; say "repo sync". Only the
-   optional WebRTC path is peer-to-peer.
+   The name stays accurate for the default
+   transport and **peer-to-peer is the headline in the positioning, not the name** (see "Positioning" below).
+   Peer-to-peer here means the replication sense: every device is an equal replica and any device can merge
+   any other's state, with no authoritative server or app-owned account. Devices do **not** connect to each
+   other directly on the default path; only the optional WebRTC appendix does.
 4. **Publish early as `0.x`, clearly experimental**, from the package repo's CI. npm provenance requires a
    public source repo (done); trusted publishing needs npm >= 11.5.1 and Node >= 22.14 in the publish job
    only. 1.0 waits for the independent security review (§15 phase 5).
+
+### Positioning (decided 2026-11-25)
+
+Keep the name `local-first-repo-sync` and lead with peer-to-peer in every description, so people looking for
+that property find it without the name over-promising.
+
+- **Tagline / README first line / npm `description`:** "Serverless, peer-to-peer-style sync for local-first
+  apps: every device is an equal replica, merged through a git repository you own, end-to-end encrypted."
+- **npm `keywords` and GitHub topics:** `p2p`, `peer-to-peer`, `local-first`, `crdt`, `yjs`, `serverless`,
+  `end-to-end-encryption`, `offline-first`, `sync`.
+- **Claims that are true:** no server or account owned by the app's author; devices are equals; contents are
+  end-to-end encrypted with a key the host never sees; works offline; the user owns the storage.
+- **Claims to avoid:** "direct device-to-device connections" (only the WebRTC appendix), "no third party sees
+  anything" (the host sees file names, sizes and commit times), and "decentralized storage".
+- The skill (`SKILL.md`) description and prompts use the same phrasing so the term surfaces when it is searched.
+- Revisit the name only if WebRTC becomes a first-class shipped transport; then a name that includes p2p would
+  be literally true.
 
 ### Core and transport
 
