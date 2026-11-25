@@ -5,6 +5,9 @@ project-independent skill plus prompts. Everything here was built and run in the
 (a vanilla-JS, no-backend time tracker). Source paths are relative to that repo. Nothing here depends on
 the conversation that produced it.
 
+Sections 1–10 describe the original implementation. Sections 11–16 describe proposed work, not
+features already available. The recovery decisions added on 2026-11-25 are in §16.
+
 ## 1. The idea in one paragraph
 
 Every device keeps the **full data locally** in a CRDT (Yjs) persisted in IndexedDB, so the app works
@@ -127,7 +130,8 @@ Fly.io (no free tier for new accounts). Note an https page cannot open plain `ws
 ## 6. Security model (honest version)
 
 - **Protected:** confidentiality of contents (AES-GCM, key never in the repo or in transit to GitHub);
-  integrity of what is decrypted (GCM tag; a tampered file is rejected). The token never leaves the device.
+  integrity of what is decrypted (GCM tag; a tampered file is rejected). The token is sent to GitHub for
+  authentication, but is not included in pairing links or sync files.
 - **Visible to anyone who can read the repo:** file names, sizes, commit times (activity pattern).
 - **Not protected:** GitHub tokens cannot be limited to a folder or a branch, so anything that can write
   the repo can **delete or overwrite** any file (availability, and rollback to an older state). The
@@ -257,11 +261,17 @@ export query → JSON → merging import).
 
 ## 13. Questions the owner still has to answer
 
+**Answered 2026-11-24; the resulting plan is §15.**
+
 - Which other apps will use this, and is their state a Yjs document or something else (decides how much of
-  the adapter work is needed)?
-- Is a shared repo per environment wanted (folders per app), and what is the naming convention?
-- Should the skill keep live pairing, or document it as an appendix only?
-- How is the shared code distributed: copied by the skill into each project, or an installable package?
+  the adapter work is needed)? — _Not decided yet, so the adapter interface ships in the package with the
+  Yjs adapter as the default; non-Yjs apps slot in later without an API change._
+- Is a shared repo per environment wanted (folders per app), and what is the naming convention? — _Support
+  both layouts: a repo per app per environment, and a shared repo per environment with a folder per app.
+  Naming convention still open._
+- Should the skill keep live pairing, or document it as an appendix only? — _Appendix doc only._
+- How is the shared code distributed: copied by the skill into each project, or an installable package? —
+  _A public npm package, so Dependabot keeps every consumer current and security fixes ship once._
 
 ## 14. Reproduce and explore
 
@@ -275,3 +285,201 @@ npm run devices -- list owner/name     # needs GITHUB_TOKEN (and optionally ETT_
 
 Start reading at `ARCHITECTURE.md` (system overview), then `web-frontend/js/github-sync.js` and its test
 `web-frontend/js/github-sync.test.cjs`. `CLAUDE.md` holds the working conventions for this repo.
+
+## 15. Decisions and extraction plan (2026-11-24)
+
+The owner answered §13 and chose a plan balancing initial effort, security, per-project effort, and
+maintenance. Two principles drove it: **format changes get N× more expensive once a second project
+adopts the sync** (so wire-format hardening happens first, centrally), and **distribution dominates
+maintenance** (a public npm package lets Dependabot keep every consumer current, matching the owner's
+existing no-AI-on-a-schedule convention; vendored copies would drift and need hand-patching).
+
+The work happens in the Squirrel Tracks repo and the shared package repository
+[mattscilipoti/local-first-github-sync](https://github.com/mattscilipoti/local-first-github-sync),
+not in devcontainer-kit. Use `git@github.com:mattscilipoti/local-first-github-sync.git` to clone the
+package repository. This is the shared code repository, not a private repository holding sync data;
+each consuming app chooses its own private data repository or folder.
+
+### Phase 1 — Harden the format once, in Squirrel Tracks
+
+Everything that touches the wire format or key semantics, while there is exactly one consumer:
+
+- The `appId` option of §11: namespace storage keys, the IndexedDB name, the KDF salt, and the repo
+  folder (`<appId>/devices/`; an empty appId keeps the legacy `devices/`).
+- Key semantics become **one key per (repo, folder)** — required because both repo layouts are
+  supported. In a shared repo per environment, each app folder has its own secret, so one app's link
+  never decrypts another app's data. The no-key refusal rule applies per folder; the sync link gains a
+  `folder` parameter.
+- **Format v2**: AES-GCM additional data binds ciphertext to an unambiguously encoded
+  `(appId, folder, deviceId, version)` context to detect file/context substitution. It does **not**
+  detect replay of an older valid snapshot in the same context. HKDF replaces PBKDF2 (the secret
+  already has 128 bits of entropy). Preserve legacy secrets, salts, storage keys, and paths through an
+  explicit migration: export first, read/decrypt/merge v1, then publish v2. Coordinate old and new
+  clients before changing writer formats; a new reader supporting v1 does not make old readers
+  understand v2. Undecryptable files must be reported and preserved for recovery, not automatically
+  overwritten as a migration strategy.
+- New fake-github tests: cross-folder isolation, swapped-file rejection, v1→v2 migration, two apps
+  sharing one repo.
+- Exit criteria: full suite green, plus a real two-browser sync re-verified by the owner.
+
+### Phase 2 — Extract into the shared package repo and publish an npm package
+
+- Package repo: `git@github.com:mattscilipoti/local-first-github-sync.git`. Planned MIT-licensed contents:
+  `GitHubSync` with injected dependencies, the adapter interface with the Yjs adapter as the shipped
+  default, `fake-github`, the
+  devices CLI, and the tests. ESM with the current CJS test compatibility; no browser globals.
+- CI: `node --test` on push, publish on tag, Dependabot on the package repo itself.
+- Squirrel Tracks becomes consumer #1: swap to the package, delete the local copies, re-vendor. This
+  proves the public API and the migration path before any second project exists.
+
+### Phase 3 — Skill and prompts (minimizes per-project effort)
+
+- `SKILL.md` per §11; live pairing is an appendix document only.
+- Ship the acceptance-test templates (the §9 list) with the package so each project copies and adapts
+  them.
+- The prompts listed in §11.
+- Devcontainer-kit tie-in: the skill can live in `~/.claude-devcontainers/shared/` so every generated
+  devcontainer already sees it.
+
+### Phase 4 — Steady-state per-project cost (the quantity being optimized)
+
+A new project: `npm install` (with Dependabot) → design its flat-map store per §3 → wire the adapter →
+copy the acceptance tests and make them green → create its private sync repo or folder, with a
+fine-grained token per device → paste the sync-dialog snippet. No crypto or protocol work per project.
+
+### Phase 5 — One independent security review
+
+Of the hardened package (§12 item 12), including migration, recovery, and rotation, after pilot
+validation but before broad multi-project rollout. Shared findings and fixes benefit every consumer;
+apps still need their own integration checks.
+
+### Maintenance model
+
+Fixes ship as package versions; Dependabot bumps each consumer; each consumer's copied acceptance suite
+catches regressions. Format policy, documented in the package: never break older-version readers within
+a major version. Remaining backlog items (token-expiry warning, remove-unreadable-files button,
+history-growth measurement) land as minor versions for all consumers at once.
+
+The riskiest phase is 1 (a crypto-adjacent format change), but it is also the best protected: the
+existing test suite and the fake-github double. Explicit migration and recovery tests must supplement
+them; dirty/republish rules alone do not prove a safe key or format transition.
+
+## 16. Data recovery and credential management plan (2026-11-25)
+
+**Status: agreed direction, implementation still required.** Build this in stages alongside §15.
+The user wants evidence that recovery information was saved during auth setup, periodic checks while
+access still exists (including token renewal), explicit recovery requirements, and a small management
+TUI that automates supported operations and gives clear instructions for the rest.
+
+### What the user manages
+
+Keep these three independent:
+
+- **Recovery record:** save in a password manager or another secure, user-controlled location outside
+  browser storage and the sync repo. Generate it in the app: app identifier and URL, environment,
+  owner/repo, folder, decryption secret, format/KDF version and required derivation metadata. Record the
+  key generation when rotation is supported; retain old records for backups encrypted under old keys.
+  A pairing link may omit required future metadata, so it is not the entire recovery record.
+- **GitHub account access:** maintain account recovery methods and recovery codes. Tokens are
+  replaceable and need not be backed up as part of the recovery record. Prefer a separate, clearly
+  named token per app/device to make replacement and revocation understandable.
+- **Independent data backups:** keep app-readable exports outside both GitHub and browser storage.
+  To survive loss of the sync secret, use either a plaintext export stored securely or an encrypted
+  export with independently retained backup credentials. Ciphertext using only the sync secret does
+  not cover loss of that secret. Record the backup date and schema version.
+
+Device IDs, SHAs, and file layout should be managed by the software, not memorized by the user.
+Data never uploaded or independently backed up cannot be recreated after its only device is lost.
+Show the last successful push and pull separately from the last local change.
+
+### Setup and periodic recovery checks
+
+1. During first auth/sync setup, generate and display the recovery record **locally**. Explain where
+   to save it; never send secrets to an AI assistant, logs, telemetry, or the code/data repository.
+2. Ask the user to save it, hide the original display, then retrieve the saved record and enter a
+   randomly selected portion of the secret in a masked field. Compare locally and discard the input.
+   Provide an accessible paste/import option for checking the full record. This is evidence of
+   retrieval, not proof of durable storage; a checkbox alone is not verification.
+3. Mark setup recovery-verified only after a successful check. Permit deferral with a visible warning;
+   never block local/offline editing or discard data because confirmation failed.
+4. Repeat retrieval checks on token replacement/renewal, secret rotation, and repo/folder migration.
+   Also support an elapsed-time reminder while the app is unlocked, since tokens may not expire.
+   The reminder interval and snooze policy remain to be chosen; do not require a check on every poll.
+5. If the record is unavailable but this browser still holds the secret, re-create the record locally,
+   save it, and repeat verification. Export current local data too. Do not invent a new secret merely
+   because a token expired or the saved record was lost.
+6. Track last successful recovery-record verification and backup restore test separately. Neither a
+   valid token nor a successful sync proves that a backup can be restored.
+
+### If something is lost: information required from the user
+
+| Lost piece | User must supply or still have | Recovery and limits |
+| --- | --- | --- |
+| Token expired, revoked, or lost | GitHub account access, repo/folder identity, and a surviving configured browser or saved recovery record | Create a replacement token for the same repo. Retain the existing secret; verify the saved record during renewal. |
+| One device lost or browser storage cleared | Saved recovery record (or one recovered from another trusted browser), GitHub access/new token, and surviving repo snapshots | Enroll a fresh browser and merge the available snapshots. Unsynced edits unique to the lost device are gone. |
+| Recovery record/link lost, trusted browser survives | Access to that browser with its stored secret | Re-export the record and local data through trusted local UI, save them, and verify retrieval. GitHub access is needed only if also restoring sync. |
+| All browsers lost, repo survives | Saved recovery record including secret/derivation metadata, plus GitHub access/new token | Download, decrypt, and merge snapshots in a fresh browser. Restore only data that reached the repo. |
+| Secret and all configured browsers lost | Independently readable data backup, plus its separate password/key if encrypted | Import into a fresh local store; generate and save a new sync secret. Without such a backup, repo ciphertext cannot recover the data. |
+| Repo deleted or inaccessible, browser survives | Access to surviving browser data; GitHub access to create/use a replacement repo | Export first, merge other available trusted sources, then set up replacement sync and save an updated record. The browser may never have pulled some edits. |
+| Repo and all browsers lost | Independent data backup and any backup decryption credentials | Restore locally, then configure a replacement repo when GitHub access is available. A recovery record without any data source is insufficient. |
+| GitHub account access lost, repo inaccessible | A surviving browser or independent backup; account recovery methods to attempt GitHub recovery | Preserve local data without waiting for account recovery. A new account/repo can restore sync, but cannot retrieve missing data from the old private repo. |
+| Snapshot corrupt or undecryptable | Correct recovery record and another valid snapshot, surviving browser, or independent backup | Preserve the failed file; try verified sources without destructive overwrite. Report missing data explicitly; do not present partial recovery as complete. |
+| Unwanted changes synced to all devices | An independent pre-change backup or suitable historical snapshot, and credentials to read it | Restore into an isolated fresh store and inspect/export desired data. Merging an old CRDT snapshot into the damaged live doc does not necessarily undo edits or tombstones. |
+| Device/token compromised | GitHub account access, identification of affected tokens/apps/devices, and trusted data source; recovery record for any needed old ciphertext | Revoke affected access, preserve trusted data, then rotate exposed secrets and re-enroll trusted devices. Replace the saved record and verify it. Already disclosed data cannot be made secret again. |
+| Secret/link exposed but tokens remain safe | Trusted browser/data or backup, current recovery record as needed, and GitHub access | Rotate the exposed app's secret and migrate trusted devices. Old ciphertext remains readable with the old secret; token revocation alone cannot fix this. |
+
+Deleting a device file or forgetting a token locally **does not revoke GitHub access**. Revocation
+requires invalidating the credential at GitHub. Rotation cannot prevent decryption of old ciphertext
+an attacker already copied or can still read from repository history.
+
+### Small app/token management TUI
+
+Start as a thin interface over shared recovery/management commands, not a second sync implementation.
+Use a local non-secret inventory of apps, environments, repos/folders, device labels, token labels and
+known scopes/expiry, plus recovery-check/backup timestamps. Do not put token or secret values in this
+inventory; if persistence is needed, use an explicitly configured OS credential store. Mask inputs
+and keep secrets out of command-line arguments and logs. The TUI cannot inspect another browser's
+localStorage; credential handoff must be explicit and local.
+
+First operations:
+
+- List apps/devices and explain which repo and credentials each uses. Show unknown expiry/status as
+  unknown; do not assume GitHub exposes a complete token inventory or expiry information.
+- Guide setup/renewal, recovery-record retrieval checks, backup export/inspection, and restore into
+  an isolated destination. Browser-owned data still requires the app's export flow.
+- Offer "revoke compromised token/device" and "revoke app access". Show affected apps and repos before
+  action. Automate only through a verified supported GitHub mechanism and appropriately authorized
+  credential; otherwise open the relevant GitHub settings and provide exact steps. Report remote
+  revocation as unverified until checked, not as successful because a local entry was deleted.
+- Keep credential revocation, deleting device snapshots, and rotating decryption secrets as separate
+  actions with separate consequences. Confirm before remote changes or deletion.
+
+**Isolation limit:** GitHub Contents tokens cover a repository, not an app folder. Separate app keys
+isolate decryption, not deletion/overwrite permissions. A reused token also makes revocation affect
+multiple apps. For true per-app GitHub permission boundaries, use a repo per app/environment and
+separate credentials; a TUI cannot make shared-folder tokens folder-scoped.
+
+### Delivery stages and acceptance gates
+
+1. **Recovery essentials, before a second consumer:** define the versioned recovery record; add setup
+   retrieval verification, renewal-triggered checks, local-data export and a restore flow. Tests must
+   cover missing/wrong records, lost token with intact secret, cleared browser storage, and legacy
+   migration without overwriting unreadable files. Exit: restore real saved data into a fresh browser
+   using only the saved record and replacement token; also restore an independent export without the
+   sync secret.
+2. **Routine checks and backup workflow:** elapsed-time reminders with explicit snooze policy,
+   last-push/pull/local-change indicators, backup reminders, and isolated restore drills. Verify that
+   local-only edits and stale backups are clearly reported and reminders never interrupt offline use.
+3. **Management CLI/TUI:** app/device/credential inventory, guided token renewal/revocation, and backup
+   inspection/restore commands. Validate operations in a throwaway repo, including manual revocation
+   instructions, shared-token blast radius, and no plaintext credential leakage.
+4. **Compromise response and rotation:** explicit key generations, old-key backup handling, trusted-data
+   selection, staged re-enrollment, and repo-loss migration. Test offline returning devices, partial
+   rotation failures, and restart/resume; do not allow stale clients to silently undo rotation. Provide
+   a lost-device drill and make old-history confidentiality limits explicit.
+5. **Independent review and rollout:** review crypto, migration, recovery, credential storage, and
+   revocation paths before broad rollout. Repeat restore drills after relevant format/schema changes.
+
+Implement the essentials first; do not wait for a TUI to make recovery possible. Detailed token
+management APIs, reminder cadence, backup storage/retention, and rotation protocol remain design
+decisions to verify before implementation.
